@@ -112,6 +112,7 @@ function evaluate(scene_loader::SceneLoader,
     end
     sleep(1.0)
     global ado_positions = nothing;
+    global ado_inputs = nothing;
 
     # Starting Simulation
     m_time_idx = 1;
@@ -135,6 +136,7 @@ function evaluate(scene_loader::SceneLoader,
                         end
                     end
                     delete!(ado_positions, key_to_remove)
+                    delete!(ado_inputs, key_to_remove)
                 end
             elseif typeof(scene_loader) == SyntheticSceneLoader
                 if typeof(controller) == RSSACController
@@ -303,5 +305,10 @@ function evaluate(scene_loader::SceneLoader,
                             w_history, u_history,
                             total_control_cost, total_position_cost, total_collision_cost, log);
     end
-    return eval_result, controller, ado_positions
+    if typeof(controller) == RSSACController &&
+       typeof(controller.predictor) == TrajectronPredictor
+        return eval_result, controller, ado_inputs
+    else
+        return eval_result, controller, ado_positions
+    end
 end

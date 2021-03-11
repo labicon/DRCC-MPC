@@ -111,8 +111,8 @@ function fetch_ado_positions!(loader::TrajectronSceneLoader; return_full_state=f
     return input_dict_returned
 end
 
-function reduce_to_positions(input_dict::Dict{PyObject, Vector{Float64}})
-    input_dict_returned = Dict{PyObject, Vector{Float64}}();
+function reduce_to_positions(input_dict::Dict{T, Vector{Float64}}) where T <: Union{PyObject, String}
+    input_dict_returned = Dict{T, Vector{Float64}}();
     for key in keys(input_dict)
         # positions only
         input_dict_returned[key] = [input_dict[key][1],
