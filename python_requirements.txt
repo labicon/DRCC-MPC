@@ -10,7 +10,7 @@ ipykernel
 imageio==2.2.0
 attrdict==2.0.0
 rospkg==1.1.10
-pyYAML==5.1.2
+pyYAML==5.4
 pandas==0.25.1
 seaborn==0.9.0
 statsmodels==0.10.1
