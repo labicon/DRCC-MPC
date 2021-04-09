@@ -5,7 +5,7 @@ if scene_mode == "data"
     cost_param = CostParameter(Cep, Cu, β_pos, α_col, β_col, λ_col, σ_risk);
     cnt_param = CrowdNavControlParameter(model_dir, env_config, policy_config,
                                          policy_name, ego_pos_goal_vec,
-                                         tcalc, dtr);
+                                         tcalc, dtr, target_speed);
 else
     @error @error "scene_mode: $(scene_mode) is not supported!"
 end

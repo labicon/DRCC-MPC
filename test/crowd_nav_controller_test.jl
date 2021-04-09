@@ -22,15 +22,17 @@ using PyCall
 
     tcalc = 0.1;
     dtr = 0.4;
+    target_speed = 0.7;
     model_dir = normpath(joinpath(@__DIR__,
                                   "../CrowdNav/crowd_nav/data/output_om_sarl_radius_0.4"))
     cnt_param = CrowdNavControlParameter(model_dir,
                                          "env.config", "policy.config", "sarl",
-                                         [0.0, 4.0], tcalc, dtr);
+                                         [0.0, 4.0], tcalc, dtr, target_speed);
 
     crowd_nav_controller = CrowdNavController(sim_param, cnt_param);
     @test !crowd_nav_controller.rl_robot.visible
     @test crowd_nav_controller.rl_robot.policy.time_step == 0.4;
+    @test crowd_nav_controller.rl_robot.v_pref == 0.7;
     @test crowd_nav_controller.rl_robot.time_step == 0.4;
     @test crowd_nav_controller.rl_robot.gx == 0.0;
     @test crowd_nav_controller.rl_robot.gy == 4.0;

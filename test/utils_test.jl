@@ -423,7 +423,7 @@ end
                                to_sec(collect(keys(target_trajectory))[end-1] - minimum(target_trajectory)[1]))
 end
 
-@testset "Parameter Setup: Data + Oracle" begin
+@testset "Controller Setup: Data + Oracle" begin
     # Scene loader & Predictor parameters
     conf_file_name = "config.json";
     test_data_name = "eth_test.pkl";
@@ -727,7 +727,7 @@ end
     cost_param = CostParameter(Cep, Cu, β_pos, α_col, β_col, λ_col, σ_risk);
     cnt_param = CrowdNavControlParameter(model_dir, env_config, policy_config,
                                          policy_name, ego_pos_goal_vec,
-                                         tcalc, dtr);
+                                         tcalc, dtr, target_speed);
 
     scene_loader, controller, w_init, ado_inputs, measurement_schedule,
     target_trajectory, target_speed =

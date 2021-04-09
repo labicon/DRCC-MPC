@@ -13,6 +13,7 @@ struct CrowdNavControlParameter <: Parameter
     goal_pos::Vector{Float64} # [x, y] goal position
     tcalc::Float64 # Allocated control computation time
     dtr::Float64 # Replanning time interval
+    target_speed::Float64 # target speed for robot
 end
 
 mutable struct CrowdNavController
@@ -36,6 +37,7 @@ function CrowdNavController(sim_param::SimulationParameter,
                                       cnt_param.policy_config, cnt_param.policy_name);
     @assert rl_robot.visible == false "RL Robot has to be invisible."
     @assert rl_robot.time_step == sim_param.dto "RL Robot has to use the same timestep as sim_param.dto."
+    rl_robot.v_pref = cnt_param.target_speed;
     rl_robot.gx, rl_robot.gy = cnt_param.goal_pos[1], cnt_param.goal_pos[2];
     rl_robot.theta = 0.0
     return CrowdNavController(sim_param, cnt_param, rl_robot, nothing, nothing,
