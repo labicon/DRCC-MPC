@@ -44,6 +44,21 @@ struct BICEvaluationResult
     log::Vector{Tuple{Time, String}}
 end
 
+struct CrowdNavEvaluationResult
+    sim_param::SimulationParameter
+    cnt_param::CrowdNavControlParameter
+    target_trajectory_history::Vector{Trajectory2D}
+    measurement_time_history::Vector{Time}
+    state_measurement_history::Vector{Dict{String, Vector{Float64}}}
+    sim_horizon::Float64
+    w_history::Vector{WorldState}
+    u_history::Vector{Vector{Float64}}
+    total_cnt_cost::Float64
+    total_pos_cost::Float64
+    total_col_cost::Float64
+    log::Vector{Tuple{Time, String}}
+end
+
 function get_clipped_prediction_dict(prediction_dict::Dict{String, Array{Float64, 3}},
                                      num_samples::Int64,
                                      nominal_control_idx::Int64)
@@ -57,19 +72,24 @@ function get_clipped_prediction_dict(prediction_dict::Dict{String, Array{Float64
 end
 
 function evaluate(scene_loader::SceneLoader,
-                  controller::Union{RSSACController, BICController},
+                  controller::Union{RSSACController, BICController, CrowdNavController},
                   w_init::WorldState,
                   ego_pos_goal_vec::Vector{Float64},
                   target_speed::Float64,
                   measurement_schedule::Vector{Time},
                   target_trajectory::Trajectory2D,
                   pos_error_replan::Float64;
+                  ado_inputs_init::Union{Nothing, Dict{T, Vector{Float64}} where T <: Union{PyObject, String}}=nothing, # only needed for CrowdNavController
                   nominal_control::Union{Nothing, Bool}=nothing, # determines if nominal control is used in RSSAC controller
                   ado_id_removed::Union{Nothing, String}=nothing, # determines if ado_id_removed is removed from scenes with TrajectronSceneLoader
                   predictor::Union{Nothing, GaussianPredictor}=nothing) # needs to feed in GaussianPredictor if BICController is used with SyntheticSceneLoader
     # Assertions
     if typeof(controller) == BICController
         @assert isnothing(nominal_control)
+    end
+    if typeof(controller) == CrowdNavController
+        @assert isnothing(nominal_control)
+        @assert !isnothing(ado_inputs_init)
     end
     if typeof(scene_loader) != TrajectronSceneLoader
         @assert isnothing(ado_id_removed)
@@ -94,10 +114,18 @@ function evaluate(scene_loader::SceneLoader,
         u_schedule_history = Vector{OrderedDict{Time, Vector{Float64}}}();
         prediction_dict_history = Vector{Union{Nothing, Dict{String, Array{Float64, 3}}}}();
         @assert istaskdone(controller.prediction_task)
+    elseif typeof(controller) == CrowdNavController
+        state_measurement_history = Vector{Dict{String, Vector{Float64}}}();
+        push!(state_measurement_history, convert_nodes_to_str(deepcopy(ado_inputs_init)));
     end
     # Compute First Control
-    schedule_control_update!(controller, w_init, target_trajectory,
-                             log=log);
+    if typeof(controller) == CrowdNavController
+        schedule_control_update!(controller, w_init.e_state, ado_inputs_init,
+                                 log=log);
+    else
+        schedule_control_update!(controller, w_init, target_trajectory,
+                                 log=log);
+    end
     last_control_update_time = w_init.t;
     wait(controller.control_update_task);
     push!(w_history, w_init);
@@ -112,7 +140,7 @@ function evaluate(scene_loader::SceneLoader,
     end
     sleep(1.0)
     global ado_positions = nothing;
-    global ado_inputs = nothing;
+    global ado_inputs = ado_inputs_init;
 
     # Starting Simulation
     m_time_idx = 1;
@@ -195,7 +223,12 @@ function evaluate(scene_loader::SceneLoader,
         if current_time < sim_end_time
             if to_sec(current_time) ≈ to_sec(last_control_update_time) + controller.cnt_param.dtr;
                 # Schedule control update
-                schedule_control_update!(controller, w_history[end], target_trajectory, log=log);
+                if typeof(controller) == CrowdNavController
+                    schedule_control_update!(controller, w_history[end].e_state, ado_inputs,
+                                             log=log);
+                else
+                    schedule_control_update!(controller, w_history[end], target_trajectory, log=log);
+                end
                 last_control_update_time = w_history[end].t
             end
             # Get control for current_time
@@ -244,6 +277,8 @@ function evaluate(scene_loader::SceneLoader,
                                                                            controller.sim_result.u_nominal_idx));
                 push!(nominal_trajectory_history, deepcopy(get_position.(controller.sim_result.e_state_array)))
                 push!(u_nominal_idx_history, controller.sim_result.u_nominal_idx);
+            elseif typeof(controller) == CrowdNavController && !isnothing(ado_inputs)
+                push!(state_measurement_history, convert_nodes_to_str(deepcopy(ado_inputs)));
             end
 
             if controller.sim_param.dtc > elapsed
@@ -297,16 +332,24 @@ function evaluate(scene_loader::SceneLoader,
                          w_history, u_history, u_schedule_history, nominal_trajectory_history,
                          prediction_dict_history, u_nominal_idx_history,
                          total_control_cost, total_position_cost, total_collision_cost, log);
-    else
+    elseif typeof(controller) == BICController
         eval_result =
         BICEvaluationResult(controller.sim_param, controller.cnt_param,
                             target_trajectory_history, measurement_schedule,
                             to_sec(sim_end_time - w_init.t),
                             w_history, u_history,
                             total_control_cost, total_position_cost, total_collision_cost, log);
+    else
+        eval_result =
+        CrowdNavEvaluationResult(controller.sim_param, controller.cnt_param,
+                                 target_trajectory_history, measurement_schedule,
+                                 state_measurement_history, to_sec(sim_end_time - w_init.t),
+                                 w_history, u_history,
+                                 total_control_cost, total_position_cost, total_collision_cost, log);
     end
-    if typeof(controller) == RSSACController &&
-       typeof(controller.predictor) == TrajectronPredictor
+    if (typeof(controller) == RSSACController &&
+       typeof(controller.predictor) == TrajectronPredictor) ||
+       (typeof(controller) == CrowdNavController)
         return eval_result, controller, ado_inputs
     else
         return eval_result, controller, ado_positions

@@ -52,6 +52,9 @@ function parse_commandline()
         "--use_bic"
             help = "use buffered input cell controller instead of rssac"
             action = :store_true
+        "--use_crowd_nav"
+            help = "use crowd nav controller instead of rssac"
+            action = :store_true
         "--rng_seed"
             help = "rng seed for prediction (and simulation if in synthetic scene mode)"
             arg_type = Int64
@@ -92,6 +95,7 @@ function main()
     deterministic_prediction = parsed_args["deterministic_prediction"]
     future_conditional = parsed_args["future_conditional"]
     use_bic = parsed_args["use_bic"]
+    use_crowd_nav = parsed_args["use_crowd_nav"]
     verbose = parsed_args["verbose"]
     show_log = parsed_args["show_log"]
     randomize_goal = parsed_args["randomize_goal"]
@@ -155,6 +159,9 @@ function main()
         end
         if use_bic
             push!(newARGS, "--use_bic")
+        end
+        if use_crowd_nav
+            push!(newARGS, "--use_crowd_nav")
         end
         if !verbose
             push!(newARGS, "--verbose")

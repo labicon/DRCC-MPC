@@ -56,6 +56,9 @@ function parse_commandline()
         "--use_bic"
             help = "use buffered input cell controller instead of rssac"
             action = :store_true
+        "--use_crowd_nav"
+            help = "use crowd nav controller instead of rssac"
+            action = :store_true
         "--rng_seed"
             help = "rng seed for prediction (and simulation if in synthetic scene mode)"
             arg_type = Int64
@@ -142,6 +145,7 @@ end
 
 # setup parameters
 if parsed_args["use_bic"]
+    @assert !parsed_args["use_crowd_nav"]
     include("$(@__DIR__)/parameter_setup_bic.jl");
     if scene_mode == "synthetic"
         scene_loader, controller, w_init, measurement_schedule, target_trajectory, target_speed, predictor =
@@ -176,7 +180,24 @@ if parsed_args["use_bic"]
                          verbose=parsed_args["verbose"]);
 
     else
-        @error @error "scene_mode: $(scene_mode) is not supported!"
+        @error "scene_mode: $(scene_mode) is not supported!"
+    end
+elseif parsed_args["use_crowd_nav"]
+    @assert !parsed_args["use_bic"]
+    include("$(@__DIR__)/parameter_setup_crowd_nav.jl");
+    if scene_mode == "data"
+        scene_loader, controller, w_init, ado_inputs, measurement_schedule, target_trajectory, target_speed =
+        controller_setup(scene_param, cnt_param,
+                         cost_param=cost_param,
+                         dtc=dtc,
+                         prediction_steps=prediction_steps,
+                         ego_pos_init_vec=ego_pos_init_vec,
+                         ego_pos_goal_vec=ego_pos_goal_vec,
+                         target_speed=target_speed,
+                         sim_horizon=sim_horizon,
+                         verbose=parsed_args["verbose"]);
+    else
+        @error "scene_mode: $(scene_mode) is not supported!"
     end
 else
     include("$(@__DIR__)/parameter_setup.jl")
@@ -266,6 +287,9 @@ if typeof(controller) == BICController
 else
     nominal_control = parsed_args["nominal_base_only"]
 end
+if !@isdefined ado_inputs
+    ado_inputs = nothing;
+end
 if !@isdefined ado_id_removed
     ado_id_removed = nothing;
 end
@@ -277,7 +301,7 @@ result, ~, ~ = evaluate(scene_loader, controller, w_init, ego_pos_goal_vec,
                         target_speed, measurement_schedule, target_trajectory,
                         pos_error_replan, nominal_control=nominal_control,
                         ado_id_removed=ado_id_removed,
-                        predictor=predictor);
+                        predictor=predictor, ado_inputs_init=ado_inputs);
 if parsed_args["show_log"]
     display_log(result.log);
 end

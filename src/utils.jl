@@ -479,7 +479,52 @@ function controller_setup(# Scene Loader parameters
            target_trajectory, target_speed, predictor
 end
 
+function controller_setup(# Scene Loader parameters
+                          scene_param::TrajectronSceneParameter,
+                          # Control Parameters
+                          cnt_param::CrowdNavControlParameter;
+                          # Cost Parameters
+                          cost_param::CostParameter,
+                          # Simulation Parameters
+                          dtc::Float64,
+                          prediction_steps::Int64,
+                          # Ego Initial Conditions
+                          ego_pos_init_vec::Vector{Float64},
+                          ego_vel_init_vec::Union{Nothing, Vector{Float64}}=nothing,
+                          ego_pos_goal_vec::Vector{Float64},
+                          t_init::Time=Time(0.0),
+                          # Other Parameters
+                          target_speed::Float64,
+                          sim_horizon::Float64,
+                          verbose=true)
+    if verbose
+        println("Scene Mode: data")
+        println("CrowdNav Controller");
+    end
+    scene_loader = TrajectronSceneLoader(scene_param, verbose=true);
+    num_samples = 0;
+    sim_param = SimulationParameter(dtc, scene_loader.dto, prediction_steps,
+                                    num_samples, cost_param)
+    ado_inputs = fetch_ado_positions!(scene_loader, return_full_state=true);
+    ado_positions = reduce_to_positions(ado_inputs)
 
+    w_init, measurement_schedule, target_trajectory =
+        init_condition_setup(ego_pos_init_vec=ego_pos_init_vec,
+                             ego_vel_init_vec=ego_vel_init_vec,
+                             ego_pos_goal_vec=ego_pos_goal_vec,
+                             t_init=t_init,
+                             ado_positions=convert_nodes_to_str(ado_positions),
+                             target_speed=target_speed,
+                             sim_horizon=sim_horizon,
+                             sim_param=sim_param);
+
+    # Controller setup
+    controller = CrowdNavController(sim_param, cnt_param);
+    @assert controller.rl_robot.v_pref == target_speed "target_speed needs to match v_pref of the CrowdNav Robot"
+
+    return scene_loader, controller, w_init, ado_inputs, measurement_schedule,
+           target_trajectory, target_speed
+end
 
 
 # display log
@@ -601,7 +646,7 @@ function visualize!(color_dict::Dict, w::WorldState,
     return plt
 end
 
-function make_gif(result::Union{EvaluationResult, BICEvaluationResult};
+function make_gif(result::Union{EvaluationResult, BICEvaluationResult, CrowdNavEvaluationResult};
                   dtplot::Float64,
                   fps::Int64,
                   figsize::Tuple{Int64, Int64},
@@ -615,8 +660,8 @@ function make_gif(result::Union{EvaluationResult, BICEvaluationResult};
                   show_nominal_trajectory=false,
                   show_past_ego_trajectory=false,
                   dummy_pos=nothing)
-    if typeof(result) == BICEvaluationResult && show_prediction
-        @warn "No prediction is available with BIC Controller"
+    if (typeof(result) == BICEvaluationResult || typeof(result) == CrowdNavEvaluationResult) && show_prediction
+        @warn "No prediction is available with BIC or CrowdNav Controller"
         show_prediction=false;
     end
     anim = Animation();
