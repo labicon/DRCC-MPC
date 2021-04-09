@@ -64,6 +64,14 @@ function __init__()
     from model.model_registrar import ModelRegistrar
     from environment import Environment, Scene, Node
 
+    # For CrowdNav Baseline
+    import configparser
+    import crowd_nav
+    import gym
+    from crowd_nav.policy.policy_factory import policy_factory
+    from crowd_sim.envs.utils.robot import Robot
+    from crowd_sim.envs.utils.state import ObservableState
+
     def load_hyperparams(model_dir, conf_file):
         '''
         param model_dir: directory where the learned model resides
@@ -175,6 +183,42 @@ function __init__()
         trajectron = OnlineTrajectron(model_registrar, hyperparams,
                                   args.eval_device)
         return trajectron, hyperparams, log
+
+    def configure_rl_robot(model_dir, env_config_path, policy_config_path,
+                           policy_name='sarl'):
+        env_config_file = os.path.join(model_dir, os.path.basename(env_config_path))
+        policy_config_file = os.path.join(model_dir, os.path.basename(policy_config_path))
+        model_weights = os.path.join(model_dir, 'rl_model.pth')
+        device = torch.device('cpu')
+
+        # configure policy
+        policy = policy_factory[policy_name]()
+        policy_config = configparser.RawConfigParser()
+        policy_config.read(policy_config_file)
+        policy.configure(policy_config)
+        if policy.trainable:
+            policy.get_model().load_state_dict(torch.load(model_weights))
+        phase = 'test'
+        policy.set_phase(phase)
+        policy.set_device(device)
+        if hasattr(policy, 'query_env'):
+            policy.query_env = False
+
+        # configure environment
+        env_config = configparser.RawConfigParser()
+        env_config.read(env_config_file)
+
+        robot = Robot(env_config, 'robot')
+        robot.set_policy(policy)
+
+        # additional setup (from crowd_sim.CrowdSim.reset)
+        time_step = env_config.getfloat('env', 'time_step')
+        robot.time_step = time_step
+        robot.policy.time_step = time_step
+        if robot.sensor == 'RGB':
+            raise NotImplementedError
+
+        return robot
     """
 end
 
@@ -309,6 +353,16 @@ export
     bic_control_update,
     bic_parameter_setup
 include("bic.jl")
+
+# CrowdNav RL Controller (benchmark)
+export
+    CrowdNavControlParameter,
+    CrowdNavController,
+    get_action!,
+    crowdnav_control_update!,
+    control!,
+    schedule_control_update!
+include("crowd_nav_controller.jl")
 
 # Evaluation Functions
 export
