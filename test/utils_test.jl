@@ -688,3 +688,90 @@ end
         (ego_pos_goal_vec - ego_pos_init_vec)./
         norm(ego_pos_goal_vec - ego_pos_init_vec)*target_speed;
 end
+
+@testset "Controller Setup: Data + CrowdNav" begin
+    # Scene loader & Predictor parameters
+    conf_file_name = "config.json";
+    test_data_name = "eth_test.pkl";
+    test_scene_id = 0;
+    start_time_idx = 3;
+    incl_robot_node = false;
+    prediction_steps = 12;
+    # Cost Parameters
+    Cep = Matrix(1.0I, 2, 2);
+    Cu = Matrix(1.0I, 2, 2);
+    β_pos = 0.6;
+    β_col = 0.4;
+    α_col = 40.0;
+    λ_col = 2.0;
+    σ_risk = 0.0;
+    # Control Parameters
+    model_dir = normpath(joinpath(@__DIR__,
+                                  "../CrowdNav/crowd_nav/data/output_om_sarl_radius_0.4"));
+    env_config = "env.config";
+    policy_config = "policy.config";
+    policy_name = "sarl";
+    tcalc = 0.01;
+    dtr = 0.4;
+    # Ego initial state
+    ego_pos_init_vec = [-5., 0.];
+    ego_pos_goal_vec = [5., 0.];
+    # Other parameters
+    dtc = 0.01;
+    target_speed = 1.0;
+    sim_horizon = 10.0;
+
+    scene_param = TrajectronSceneParameter(conf_file_name, test_data_name,
+                                           test_scene_id, start_time_idx,
+                                           incl_robot_node);
+    cost_param = CostParameter(Cep, Cu, β_pos, α_col, β_col, λ_col, σ_risk);
+    cnt_param = CrowdNavControlParameter(model_dir, env_config, policy_config,
+                                         policy_name, ego_pos_goal_vec,
+                                         tcalc, dtr);
+
+    scene_loader, controller, w_init, ado_inputs, measurement_schedule,
+    target_trajectory, target_speed =
+    controller_setup(scene_param, cnt_param,
+                     cost_param=cost_param,
+                     dtc=dtc,
+                     prediction_steps=prediction_steps,
+                     ego_pos_init_vec=ego_pos_init_vec,
+                     ego_pos_goal_vec=ego_pos_goal_vec,
+                     target_speed=target_speed,
+                     sim_horizon=sim_horizon,
+                     verbose=false);
+    @test scene_loader.param.conf_file_name == conf_file_name;
+    @test scene_loader.param.test_data_name == test_data_name;
+    @test scene_loader.param.test_scene_id == test_scene_id;
+    @test scene_loader.param.start_time_idx == start_time_idx;
+    @test scene_loader.param.incl_robot_node == false;
+    @test scene_loader.curr_time_idx == start_time_idx + 1;
+    @test controller.sim_param.dtc == dtc;
+    @test controller.sim_param.dto == scene_loader.dto;
+    @test controller.sim_param.prediction_steps == prediction_steps;
+    @test controller.sim_param.num_samples == 0;
+    @test controller.sim_param.cost_param.Cep == Cep;
+    @test controller.sim_param.cost_param.Cu == Cu;
+    @test controller.sim_param.cost_param.β_pos == β_pos;
+    @test controller.sim_param.cost_param.α_col == α_col;
+    @test controller.sim_param.cost_param.β_col == β_col;
+    @test controller.sim_param.cost_param.λ_col == λ_col;
+    @test controller.sim_param.cost_param.σ_risk == σ_risk;
+    @test controller.cnt_param.model_dir == model_dir;
+    @test controller.cnt_param.env_config == env_config;
+    @test controller.cnt_param.policy_config == policy_config;
+    @test controller.cnt_param.policy_name == policy_name;
+    @test controller.cnt_param.goal_pos == ego_pos_goal_vec;
+    @test controller.cnt_param.tcalc == tcalc;
+    @test controller.cnt_param.dtr == dtr;
+    @test measurement_schedule[1] == Time(controller.sim_param.dto);
+    @test measurement_schedule[end] == Time(sim_horizon);
+    @test minimum(target_trajectory)[1] == Time(0.0);
+    @test minimum(target_trajectory)[2] == ego_pos_init_vec;
+    @test maximum(target_trajectory)[1] == Time(14.8);
+    @test maximum(target_trajectory)[2] == ego_pos_goal_vec;
+    @test get_position(w_init.e_state) == ego_pos_init_vec;
+    @test get_velocity(w_init.e_state) ==
+        (ego_pos_goal_vec - ego_pos_init_vec)./
+        norm(ego_pos_goal_vec - ego_pos_init_vec)*target_speed;
+end

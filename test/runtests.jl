@@ -32,6 +32,8 @@ include("forward_backward_simulation_test.jl")
 include("rs_sac_controller_test.jl")
 @info "Executing BIC Test"
 include("bic_test.jl")
+@info "Executing CrowdNav Test"
+include("crowd_nav_controller_test.jl")
 @info "Executing Utils Test"
 include("utils_test.jl")
 end

@@ -1,2 +1,4 @@
 env_trajectron++/**
+notebook/.ipynb_checkpoints/**
 .ipynb_checkpoints/**
+.idea/**
