@@ -1,5 +1,8 @@
 ENV["PYCALL_JL_RUNTIME_PYTHON"] = Sys.which("python")
 
+using Pkg
+Pkg.activate(joinpath(@__DIR__, ".."))
+
 using ArgParse
 using Distributions
 using LinearAlgebra
@@ -282,7 +285,7 @@ println("prediction_rng_seed:        $(prediction_rng_seed)");
 if !@isdefined predictor
     predictor = nothing;
 end
-if typeof(controller) == BICController
+if typeof(controller) == BICController || typeof(controller) == CrowdNavController
     nominal_control = nothing;
 else
     nominal_control = parsed_args["nominal_base_only"]
@@ -343,7 +346,7 @@ else
     save_dir = joinpath(save_dir, "non_future_conditional")
 end
 
-if typeof(controller) == BICController
+if typeof(controller) == BICController || typeof(controller) == CrowdNavController
     save_dir = joinpath(save_dir, "deterministic")
 elseif deterministic || typeof(controller.predictor) == OraclePredictor
     save_dir = joinpath(save_dir, "deterministic")

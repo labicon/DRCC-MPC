@@ -1,5 +1,8 @@
 ENV["PYCALL_JL_RUNTIME_PYTHON"] = Sys.which("python")
 
+using Pkg
+Pkg.activate(joinpath(@__DIR__, ".."))
+
 using ArgParse
 using ProgressMeter
 using Random

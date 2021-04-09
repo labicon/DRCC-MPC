@@ -83,7 +83,7 @@ end
     if tcalc_actual >= controller.cnt_param.tcalc
         # tcalc_actual has exceeded allowable computation time
         time = @sprintf "Time %.2f" round(to_sec(e_init.t), digits=5)
-        @warn "$(time) [sec]: BIC computation took $(round(tcalc_actual, digits=3)) [sec], which exceeds the maximum computation time allowed."
+        @warn "$(time) [sec]: CrowdNav computation took $(round(tcalc_actual, digits=3)) [sec], which exceeds the maximum computation time allowed."
     end
 
     return tcalc_actual, u_acc
