@@ -41,10 +41,18 @@ function transition_control_coeff(e_state::RobotState)
     return H
 end
 
-# Forward Euler Integration of Instataneous Transition
+# # Forward Euler Integration of Instataneous Transition
+# function transition(e_state::RobotState,
+#                     u::Vector{Float64},
+#                     dt::Real)
+#     x_new = e_state.x + transition(e_state, u)*dt;
+#     return RobotState(x_new, e_state.t + Duration(dt))
+# end
+
 function transition(e_state::RobotState,
                     u::Vector{Float64},
                     dt::Real)
-    x_new = e_state.x + transition(e_state, u)*dt;
+    dx = [u[1]*dt, u[2]*dt, -e_state.x[1] + u[1], -e_state.x[2] + u[2]]
+    x_new = e_state.x + dx
     return RobotState(x_new, e_state.t + Duration(dt))
 end

@@ -9,7 +9,7 @@ using LinearAlgebra
 
 # Cost Parameter
 mutable struct CostParameter <: Parameter
-    #ep_target::Position2D # Goal position for ego robot
+    #ep_target::Vector{Float64} # Goal position for ego robot
     #ep_targets::Trajectory2D
     Cep::Matrix{Float64}  # Quadratic penalty matrix for ego robot position
     Cu::Matrix{Float64}   # Quadratic penalty matrix for ego robot control

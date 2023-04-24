@@ -18,12 +18,12 @@ struct SimulationParameter <: Parameter
     dto::Float64                   # Time Interval for Discrete-time Dynamics
     prediction_steps::Int64        # Prediction steps for ado robots
     num_samples::Int64             # Number of samples (per ado) for ado simulation
-    cost_param::CostParameter
+    cost_param::DRCCostParameter
 end
 
 function SimulationParameter(traj_scene_loader::TrajectronSceneLoader,
                              traj_predictor::TrajectronPredictor,
-                             dtc::Float64, cost_param::CostParameter)
+                             dtc::Float64, cost_param::DRCCostParameter)
     dto = traj_scene_loader.dto;
     prediction_steps = traj_predictor.param.prediction_steps;
     num_samples = traj_predictor.param.num_samples;
@@ -33,7 +33,7 @@ end
 
 function SimulationParameter(traj_scene_loader::TrajectronSceneLoader,
                              oracle_predictor::OraclePredictor,
-                             dtc::Float64, cost_param::CostParameter)
+                             dtc::Float64, cost_param::DRCCostParameter)
     dto = traj_scene_loader.dto;
     prediction_steps = oracle_predictor.param.prediction_steps;
     num_samples = 1;
@@ -42,7 +42,7 @@ function SimulationParameter(traj_scene_loader::TrajectronSceneLoader,
 end
 
 function SimulationParameter(gaussian_predictor::GaussianPredictor,
-                             dtc::Float64, cost_param::CostParameter)
+                             dtc::Float64, cost_param::DRCCostParameter)
     dto = gaussian_predictor.dto;
     prediction_steps = gaussian_predictor.param.prediction_steps;
     num_samples = gaussian_predictor.param.num_samples;
@@ -268,7 +268,7 @@ function compute_costs(ex_array_gpu::CuArray{Float32, 3},
                        time_idx_ap_array_gpu::CuArray{Int32, 1},
                        control_idx_ex_array_gpu::CuArray{Int32, 1},
                        target_pos_array_gpu::CuArray{Float32, 2},
-                       cost_param::CostParameter)
+                       cost_param::DRCCostParameter)
     if name(CuDevice(0)) == "NVIDIA GeForce RTX 3060"
         # Instataneous costs
         inst_cnt_cost_array_gpu = instant_control_cost(u_array_gpu, cost_param, threads=(16, 64));
@@ -336,12 +336,7 @@ function integrate_costs(cost_result::SimulationCostResult,
     # compute risk value per control
     risk_per_control = Vector{Float64}(undef, num_controls);
     for ii = 1:num_controls
-        if !(sim_param.cost_param.σ_risk == 0.0)
-            risk_value = 1/sim_param.cost_param.σ_risk*
-                         logsumexp(sim_param.cost_param.σ_risk.*total_cost_per_control_sample[ii, :] .- log(sim_param.num_samples));
-        else
-            risk_value = sum(total_cost_per_control_sample[ii, :])./sim_param.num_samples
-        end
+        risk_value = sum(total_cost_per_control_sample[ii, :])./sim_param.num_samples
         @inbounds risk_per_control[ii] = risk_value
     end
     return total_cost_per_control_sample, risk_per_control
@@ -364,7 +359,7 @@ function compute_cost_gradients(best_ex_array_gpu::CuArray{Float32, 2},
                                 best_ap_array_gpu::CuArray{Float32, 4},
                                 time_idx_ap_array_gpu::CuArray{Int32, 1},
                                 target_pos_array_gpu::CuArray{Float32, 2},
-                                cost_param::CostParameter)
+                                cost_param::DRCCostParameter)
     if name(CuDevice(0)) == "NVIDIA GeForce RTX 3060"
         # Instantaneous costs
         inst_pos_cost_grad_array_gpu = instant_position_cost_gradient(best_ex_array_gpu, target_pos_array_gpu,

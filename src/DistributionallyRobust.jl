@@ -1,12 +1,12 @@
 #///////////////////////////////////////
-#// File Name: RiskSensitiveSAC.jl
-#// Author: Haruki Nishimura (hnishimura@stanford.edu)
-#// Date Created: 2020/12/04
-#// Description: Julia package for Risk Sensitive Sequential Action
+#// File Name: DistributionallyRobust.jl
+#// Author: Kanghyun Ryu (kr37@illinois.edu)
+#// Date Created: 2023/03/30
+#// Description: Julia package for Distributionally Robust 
 #// Control, with public version of Trajectron++
 #///////////////////////////////////////
 
-module RiskSensitiveSAC
+module DistributionallyRobust
 
 import Base: ==, isequal, isapprox
 import PlotUtils: plot_color
@@ -251,12 +251,8 @@ export
     instant_collision_cost,
     terminal_position_cost,
     terminal_collision_cost,
-    instant_position_cost_gradient,
-    instant_collision_cost_gradient,
-    terminal_position_cost_gradient,
-    terminal_collision_cost_gradient,
-    CostParameter
-include("cost.jl")
+    DRCCostParameter
+include("drc_cost.jl")
 
 # Cost (CUDA kernels)
 export
@@ -264,12 +260,8 @@ export
     kernel_instant_control_cost!,
     kernel_instant_collision_cost!,
     kernel_terminal_position_cost!,
-    kernel_terminal_collision_cost!,
-    kernel_instant_position_cost_gradient!,
-    kernel_instant_collision_cost_gradient!,
-    kernel_terminal_position_cost_gradient!,
-    kernel_terminal_collision_cost_gradient!
-include("cost_gpu.jl")
+    kernel_terminal_collision_cost!
+include("drc_cost_gpu.jl")
 
 # Scene Loader
 export
@@ -317,61 +309,78 @@ export
     SimulationCostResult,
     SimulationCostGradResult,
     SimulationResult
-include("forward_backward_simulation.jl")
+include("drc_forward_backward_simulation.jl")
 
-# Risk Sensitive SAC Controller
+# Distributionally Robust Controller
 export
+    DRCController,
     control!,
-    adjust_old_prediction!,
     schedule_prediction!,
     schedule_control_update!,
-    convert_to_schedule,
-    get_nominal_u_arrays,
+    drc_control_update!,
+    get_action!,
+    cem_optimization!,
+    get_mean_cov,
+    compute_cost_CvaR,
+    compute_cost,
+    compute_CVaR,
     get_robot_present_and_future,
-    get_control_coeffs,
-    solve_multi_qcqp,
-    get_control_schedule,
-    determine_control_time,
-    sac_control_update,
-    ControlParameter,
-    ControlSchedule,
-    RSSACController
-include("rs_sac_controller.jl")
+    DRCControlParameter
+include("distributionally_robust_controller.jl")
+
+# # Risk Sensitive SAC Controller
+# export
+#     control!,
+#     adjust_old_prediction!,
+#     schedule_prediction!,
+#     schedule_control_update!,
+#     convert_to_schedule,
+#     get_nominal_u_arrays,
+#     get_robot_present_and_future,
+#     get_control_coeffs,
+#     solve_multi_qcqp,
+#     get_control_schedule,
+#     determine_control_time,
+#     sac_control_update,
+#     ControlParameter,
+#     ControlSchedule,
+#     RSSACController
+# include("rs_sac_controller.jl")
 
 # Buffered Input Cells and Related Functions (benchmark)
-export
-    vertex_direction,
-    sort_vertices,
-    scale_and_shift,
-    find_extrema,
-    retract_cell,
-    get_input_positions,
-    compute_buffered_voronoi_cells,
-    compute_buffered_input_cell,
-    project,
-    lq_tracking,
-    BICControlParameter,
-    BICController,
-    bic_control_update,
-    bic_parameter_setup
-include("bic.jl")
+# export
+#     vertex_direction,
+#     sort_vertices,
+#     scale_and_shift,
+#     find_extrema,
+#     retract_cell,
+#     get_input_positions,
+#     compute_buffered_voronoi_cells,
+#     compute_buffered_input_cell,
+#     project,
+#     lq_tracking,
+#     BICControlParameter,
+#     BICController,
+#     bic_control_update,
+#     bic_parameter_setup
+# include("bic.jl")
 
-# CrowdNav RL Controller (benchmark)
-export
-    CrowdNavControlParameter,
-    CrowdNavController,
-    get_action!,
-    crowdnav_control_update!,
-    control!,
-    schedule_control_update!
-include("crowd_nav_controller.jl")
+# # CrowdNav RL Controller (benchmark)
+# export
+#     CrowdNavControlParameter,
+#     CrowdNavController,
+#     get_action!,
+#     crowdnav_control_update!,
+#     control!,
+#     schedule_control_update!
+# include("crowd_nav_controller.jl")
 
 # Evaluation Functions
 export
     evaluate,
     EvaluationResult,
     BICEvaluationResult
-include("evaluation.jl")
+include("drc_evaluation.jl")
 
 # Helper Functions
 export
@@ -383,6 +392,6 @@ export
     make_gif,
     fetch_stats_filtered,
     plot_histogram
-include("utils.jl")
+include("drc_utils.jl")
 
 end # module

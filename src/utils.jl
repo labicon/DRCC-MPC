@@ -89,6 +89,126 @@ function init_condition_setup(;# Ego Initial Conditions
     end
 end
 
+# DRC and Trajectron controller setup
+function controller_setup(# Scene Loader parameters
+                            scene_param::TrajectronSceneParameter,
+                            # Predictor Parameters
+                            predictor_param::TrajectronPredictorParameter;
+                            prediction_device::String,
+                            # Cost Parameters
+                            cost_param::DRCCostParameter,
+                            # Control Parameters
+                            cnt_param::DRCControlParameter,
+                            # Simulation Parameters
+                            dtc::Float64,
+                            # Ego Initial Conditions
+                            ego_pos_init_vec::Union{Nothing, Vector{Float64}}=nothing,
+                            ego_vel_init_vec::Union{Nothing, Vector{Float64}}=nothing,
+                            ego_pos_goal_vec::Union{Nothing, Vector{Float64}}=nothing,
+                            t_init::Time=Time(0.0),
+                            # Other Parameters
+                            target_speed::Union{Nothing, Float64}=nothing,
+                            sim_horizon::Float64,
+                            ado_id_to_replace::Union{Nothing, String}=nothing,
+                            verbose=true)
+    if verbose
+        println("Scene Mode: data")
+        println("Prediction Mode: trajectron")
+        println("Deterministic Prediction: $(predictor_param.deterministic)")
+    end
+    if prediction_device == "cpu"
+        device = py"torch".device("cpu");
+    elseif prediction_device == "cuda"
+        device = py"torch".device("cuda");
+    end
+    scene_loader = TrajectronSceneLoader(scene_param, verbose=verbose,
+                    ado_id_removed=ado_id_to_replace);
+    if !isnothing(ado_id_to_replace)
+        @assert isnothing(ego_pos_init_vec) && isnothing(ego_vel_init_vec) &&
+                    isnothing(ego_pos_goal_vec) && isnothing(target_speed)
+        target_trajectory = get_trajectory_for_ado(scene_loader,
+                                    t_init,
+                                    ado_id_to_replace,
+                                    sim_horizon);
+        t_init_new = minimum(target_trajectory)[1];
+        t_end = maximum(target_trajectory)[1];
+        timesteps_forward = Int64(round(to_sec(t_init_new - t_init)/scene_loader.dto, digits=5));
+        println("Found $(ado_id_to_replace). start_time_idx updated to: $(scene_param.start_time_idx + timesteps_forward) Re-loading Scene...")
+        sim_horizon -= to_sec(t_init_new - t_init);
+        ego_pos_init_vec = minimum(target_trajectory)[2];
+        ego_vel_init_vec = (collect(values(target_trajectory))[2] - ego_pos_init_vec)./scene_loader.dto;
+        ego_pos_goal_vec = maximum(target_trajectory)[2];
+        scene_param_new = TrajectronSceneParameter(scene_param.conf_file_name,
+                                scene_param.test_data_name,
+                                scene_param.test_scene_id,
+                                scene_param.start_time_idx + timesteps_forward,
+                                scene_param.incl_robot_node);
+        scene_loader = TrajectronSceneLoader(scene_param_new, verbose=verbose,
+                            ado_id_removed=ado_id_to_replace);
+        target_trajectory = get_trajectory_for_ado(scene_loader,
+                                    t_init_new,
+                                    ado_id_to_replace,
+                                    sim_horizon);
+        prediction_horizon = scene_loader.dto*predictor_param.prediction_steps;
+        if to_sec(t_end - t_init_new) < sim_horizon + prediction_horizon
+            target_trajectory[t_init_new + Duration(sim_horizon + prediction_horizon)] = ego_pos_goal_vec;
+        end
+    end
+    predictor = TrajectronPredictor(predictor_param,
+                scene_loader.model_dir,
+                scene_loader.param.conf_file_name,
+                device, verbose=verbose);
+    initialize_scene_graph!(predictor, scene_loader);
+    sim_param = SimulationParameter(scene_loader, predictor, dtc, cost_param);
+
+    ado_inputs = fetch_ado_positions!(scene_loader, return_full_state=true);
+    ado_positions = reduce_to_positions(ado_inputs);
+
+    if !isnothing(ado_id_to_replace)
+        key_to_remove = nothing
+        for key in keys(ado_positions)
+            if pybuiltin("str")(key) == ado_id_to_replace
+                key_to_remove = key
+            end
+        end
+        delete!(ado_positions, key_to_remove)
+        delete!(ado_inputs, key_to_remove)
+
+        println("Note initial time is set to $(to_sec(t_init_new)) [s].")
+        w_init, measurement_schedule =
+            init_condition_setup(ego_pos_init_vec=ego_pos_init_vec,
+                    ego_vel_init_vec=ego_vel_init_vec,
+                    ego_pos_goal_vec=ego_pos_goal_vec,
+                    t_init=t_init_new,
+                    ado_positions=convert_nodes_to_str(ado_positions),
+                    sim_horizon=sim_horizon,
+                    sim_param=sim_param,
+                    target_trajectory_required=false);
+    else
+        @assert !isnothing(ego_pos_init_vec) && !isnothing(ego_pos_goal_vec)
+        w_init, measurement_schedule, target_trajectory =
+            init_condition_setup(ego_pos_init_vec=ego_pos_init_vec,
+                    ego_vel_init_vec=ego_vel_init_vec,
+                    ego_pos_goal_vec=ego_pos_goal_vec,
+                    t_init=t_init,
+                    ado_positions=convert_nodes_to_str(ado_positions),
+                    sim_horizon=sim_horizon,
+                    sim_param=sim_param,
+                    target_trajectory_required=false);
+    end
+    # Controller setup
+    controller = DRCController(sim_param, cnt_param, predictor, cost_param);
+    if predictor.param.use_robot_future
+        schedule_prediction!(controller, ado_inputs, w_init.e_state);
+    else
+        schedule_prediction!(controller, ado_inputs);
+    end
+    wait(controller.prediction_task);
+
+    return scene_loader, controller, w_init, measurement_schedule, 
+            target_trajectory, target_speed
+end
+
 function controller_setup(# Scene Loader parameters
                           scene_param::TrajectronSceneParameter,
                           # Predictor Parameters
