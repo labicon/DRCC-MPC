@@ -14,7 +14,7 @@ if scene_mode == "data" && prediction_mode == "trajectron"
                                                    deterministic,
                                                    prediction_rng_seed);
     cost_param = DRCCostParameter(ego_pos_goal_vec, Cep, Cu, β_pos, α_col, β_col, λ_col);
-    cnt_param = DRCControlParameter(u_norm_max, tcalc, ego_pos_goal_vec, dtr, horizon, human_size,
+    cnt_param = DRCControlParameter(u_norm_max, tcalc, ego_pos_goal_vec, dtr, dtc, horizon, human_size,
                                         cem_init_mean, cem_init_cov, cem_init_num_samples,
                                         cem_init_num_elites, cem_init_alpha, cem_init_iterations, epsilon);
 

@@ -100,47 +100,52 @@ function evaluate(scene_loader::SceneLoader,
                          controller.sim_param.prediction_steps;
     while w_history[end].t <= sim_end_time
         current_time = w_history[end].t;
-        # Get new measurement
-        msg_1 = "New measurement is obtained."
-        push!(log, (current_time, msg_1))
-        ado_inputs = fetch_ado_positions!(scene_loader, return_full_state=true);
-        ado_positions = reduce_to_positions(ado_inputs);
-        if !isnothing(ado_id_removed)
-            key_to_remove = nothing
-            for key in keys(ado_positions)
-                if pybuiltin("str")(key) == ado_id_removed
-                    key_to_remove = key
+        if current_time == measurement_schedule[m_time_idx]
+            # Get new measurement
+            msg_1 = "New measurement is obtained."
+            push!(log, (current_time, msg_1))
+            ado_inputs = fetch_ado_positions!(scene_loader, return_full_state=true);
+            ado_positions = reduce_to_positions(ado_inputs);
+            if !isnothing(ado_id_removed)
+                key_to_remove = nothing
+                for key in keys(ado_positions)
+                    if pybuiltin("str")(key) == ado_id_removed
+                        key_to_remove = key
+                    end
+                end
+                delete!(ado_positions, key_to_remove)
+                delete!(ado_inputs, key_to_remove)
+            end
+            # Starting timer to keep track of computation time
+            process_start_time = time();
+            if current_time < sim_end_time
+                if typeof(controller) == DRCController
+                    # Schedule prediction
+                    previous_ado_pos_dict = deepcopy(w_history[end].ap_dict);
+                    msg_2 = "New prediction is scheduled."
+                    push!(log, (current_time, msg_2))
+                    if typeof(controller.predictor) == TrajectronPredictor &&
+                            controller.predictor.param.use_robot_future
+                        schedule_prediction!(controller, ado_inputs, previous_ado_pos_dict,
+                                                w_history[end].e_state);
+                    elseif typeof(controller.predictor) == TrajectronPredictor
+                        schedule_prediction!(controller, ado_inputs);
+                    else
+                        schedule_prediction!(controller, ado_positions, previous_ado_pos_dict);
+                    end
+                    prediction_dict_history[end] = get_clipped_prediction_dict(controller.prediction_dict,
+                                                                                controller.sim_param.num_samples);
+                    wait(controller.prediction_task);
                 end
             end
-            delete!(ado_positions, key_to_remove)
-            delete!(ado_inputs, key_to_remove)
+            w_history[end].ap_dict = convert_nodes_to_str(ado_positions);
+            w_history[end].t_last_m = current_time;
+            m_time_idx += 1;
+        else
+            # No new measurement
+            # Starting timer to keep track of computation time
+            process_start_time = time();
         end
-        # Starting timer to keep track of computation time
-        process_start_time = time();
-        if current_time < sim_end_time
-            if typeof(controller) == DRCController
-                # Schedule prediction
-                previous_ado_pos_dict = deepcopy(w_history[end].ap_dict);
-                msg_2 = "New prediction is scheduled."
-                push!(log, (current_time, msg_2))
-                if typeof(controller.predictor) == TrajectronPredictor &&
-                        controller.predictor.param.use_robot_future
-                    schedule_prediction!(controller, ado_inputs, previous_ado_pos_dict,
-                                            w_history[end].e_state);
-                elseif typeof(controller.predictor) == TrajectronPredictor
-                    schedule_prediction!(controller, ado_inputs);
-                else
-                    schedule_prediction!(controller, ado_positions, previous_ado_pos_dict);
-                end
-                prediction_dict_history[end] = get_clipped_prediction_dict(controller.prediction_dict,
-                                                                            controller.sim_param.num_samples);
-                wait(controller.prediction_task);
-            end
-        end
-        w_history[end].ap_dict = convert_nodes_to_str(ado_positions);
-        w_history[end].t_last_m = current_time;
-        m_time_idx += 1;
-
         # Proceed further
         if current_time < sim_end_time
             if to_sec(current_time) ≈ to_sec(last_control_update_time) + controller.cnt_param.dtr;
