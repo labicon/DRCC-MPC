@@ -14,8 +14,9 @@ import StatsFuns: logsumexp
 
 # Simulation Parameter
 struct SimulationParameter <: Parameter
-    dtc::Float64                   # Time Interval for Continuous-time Dynamics
-    dto::Float64                   # Time Interval for Discrete-time Dynamics
+    dtc::Float64                   # Time Interval for euler integral
+    dtr::Float64                   # Time Interval for Discrete-time Dynamics
+    dto::Float64                   # Time Interval for Trajectron Prediction
     prediction_steps::Int64        # Prediction steps for ado robots
     num_samples::Int64             # Number of samples (per ado) for ado simulation
     cost_param::DRCCostParameter
@@ -27,7 +28,7 @@ function SimulationParameter(traj_scene_loader::TrajectronSceneLoader,
     dto = traj_scene_loader.dto;
     prediction_steps = traj_predictor.param.prediction_steps;
     num_samples = traj_predictor.param.num_samples;
-    return SimulationParameter(dtc, dto, prediction_steps, num_samples,
+    return SimulationParameter(dtc, 0.1, dto, prediction_steps, num_samples,
                                cost_param)
 end
 
@@ -37,7 +38,7 @@ function SimulationParameter(traj_scene_loader::TrajectronSceneLoader,
     dto = traj_scene_loader.dto;
     prediction_steps = oracle_predictor.param.prediction_steps;
     num_samples = 1;
-    return SimulationParameter(dtc, dto, prediction_steps, num_samples,
+    return SimulationParameter(dtc, 0.1, dto, prediction_steps, num_samples,
                                cost_param)
 end
 
@@ -46,7 +47,7 @@ function SimulationParameter(gaussian_predictor::GaussianPredictor,
     dto = gaussian_predictor.dto;
     prediction_steps = gaussian_predictor.param.prediction_steps;
     num_samples = gaussian_predictor.param.num_samples;
-    return SimulationParameter(dtc, dto, prediction_steps, num_samples,
+    return SimulationParameter(dtc, 0.1, dto, prediction_steps, num_samples,
                                cost_param)
 end
 

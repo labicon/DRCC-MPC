@@ -31,6 +31,15 @@ function instant_position_cost(e_state::RobotState,
     return position_cost
 end
 
+# # Evaluation Position
+function instant_evaluation_position_cost(e_state::RobotState,
+                                            ep_target::Vector{Float64},
+                                            param::CostParameter)
+    position_error = get_position(e_state) - ep_target;
+    position_cost = 0.5*position_error'*param.Cep*position_error;
+    return position_cost
+end
+
 # # Control
 function instant_control_cost(u::Vector{Float64},
                               param::CostParameter)
@@ -55,6 +64,11 @@ end
 terminal_position_cost(e_state::RobotState, target_trajectory::Trajectory2D,
                        param::CostParameter) =
     param.β_pos*instant_position_cost(e_state, target_trajectory, param);
+
+# # evaluation Position
+terminal_evaluation_position_cost(e_state::RobotState, ep_target::Vector{Float64},
+                       param::CostParameter) =
+    param.β_pos*instant_evaluation_position_cost(e_state, ep_target, param);
 
 # # Collision
 terminal_collision_cost(e_state::RobotState, apvec::Vector{Float64},

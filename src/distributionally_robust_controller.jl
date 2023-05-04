@@ -22,6 +22,7 @@ struct DRCControlParameter <: Parameter
     dtc::Float64 # Euler integration time interval
 
     horizon::Int64 # Planning horizon
+    discount::Float64 # Discount factor
 
     human_size::Float64 # Human size
 
@@ -37,6 +38,7 @@ struct DRCControlParameter <: Parameter
     function DRCControlParameter(eamax::Float64, tcalc::Float64, 
                                 goal_pos::Vector{Float64}, dtr::Float64, dtc::Float64,
                                 horizon::Int64,
+                                discount::Float64,
                                 human_size::Float64,
                                 cem_init_mean::Vector{Float64},
                                 cem_init_cov::Matrix{Float64},
@@ -49,7 +51,7 @@ struct DRCControlParameter <: Parameter
         @assert tcalc > 0.0 "tcalc must be positive."
         @assert dtr > 0.0 "dtr must be positive."
         @assert length(goal_pos) == 2 "goal_pos must be a 2D vector."
-        return new(eamax, tcalc, goal_pos, dtr, dtc, horizon, human_size,
+        return new(eamax, tcalc, goal_pos, dtr, dtc, horizon, discount, human_size,
                     cem_init_mean, cem_init_cov,
                     cem_init_num_samples, cem_init_num_elites, cem_init_alpha,
                     cem_init_iterations, epsilon)
@@ -145,6 +147,19 @@ function schedule_prediction!(controller::DRCController,
                 end
             end
         end
+    elseif typeof(controller.predictor) == GaussianPredictor
+        controller.prediction_task = @task begin
+            controller.prediction_dict_tmp =
+                sample_future_ado_positions!(controller.predictor,
+                                             convert_nodes_to_str(ado_pos_dict));
+            num_controls = 1;
+            # each value has to be (num_samples*num_controls, prediction_steps, 2) array
+            for key in keys(controller.prediction_dict_tmp)
+                controller.prediction_dict_tmp[key] =
+                    repeat(controller.prediction_dict_tmp[key],
+                           outer=(num_controls, 1, 1));
+            end
+        end
     else
         @error "Type of controller.predictor: $(typeof(controller.predictor)) is not supported."
     end
@@ -213,19 +228,35 @@ end
                                     prediction_cov_dict::Dict{String, Array{Float64, 3}},
                                     w_init::WorldState)
     # initialize control candidates
+    # dist_mean = [cnt_param.cem_init_mean for i in 1:cnt_param.horizon];
+    # dist_cov = [cnt_param.cem_init_cov for i in 1:cnt_param.horizon];
+    # dist_mean = cnt_param.cem_init_mean;
+    # dist_cov = cnt_param.cem_init_cov;
     dist_mean = [cnt_param.cem_init_mean for i in 1:cnt_param.horizon];
-    dist_cov = [cnt_param.cem_init_cov for i in 1:cnt_param.horizon];
+    dist_var = [[1.0, 1.0] for i in 1:cnt_param.horizon];
+
+    u_optim = cnt_param.cem_init_mean;
     
     for iteration in 1:cnt_param.cem_init_iterations
         # sample control candidates
         u_candidates = zeros(cnt_param.cem_init_num_samples, cnt_param.horizon, 2);
         for i in 1:cnt_param.horizon
-            if isposdef(dist_cov[i])
-                u_candidates[:, i, :] = transpose(rand(MvNormal(dist_mean[i], dist_cov[i]), cnt_param.cem_init_num_samples));
-            else
-                dist_cov[i] = [1 0; 0 1];
-                u_candidates[:, i, :] = transpose(rand(MvNormal(dist_mean[i], dist_cov[i]), cnt_param.cem_init_num_samples));
-            end
+            lb_dist = dist_mean[i] .+ cnt_param.eamax;
+            ub_dist = cnt_param.eamax .- dist_mean[i];
+            dist_var[i] = min(min((lb_dist/2).^2, ((ub_dist/2).^2)), dist_var[i]);
+            u_candidates[:, i, :] = sqrt.(dist_var[i])' .* rand(Normal(0.0, 1.0), (cnt_param.cem_init_num_samples, 2)) .+ dist_mean[i]';
+            # if isposdef(dist_cov[i])
+            #     u_candidates[:, i, :] = transpose(rand(MvNormal(dist_mean[i], dist_cov[i]), cnt_param.cem_init_num_samples));
+            # else
+            #     dist_cov[i] = [1.0 0.0; 0.0 1.0];
+            #     u_candidates[:, i, :] = transpose(rand(MvNormal(dist_mean[i], dist_cov[i]), cnt_param.cem_init_num_samples));
+            # end
+            # if isposdef(dist_cov)
+            #     u_candidates[:, i, :] = transpose(rand(MvNormal(dist_mean, dist_cov), cnt_param.cem_init_num_samples));
+            # else
+            #     dist_cov = [1.0 0.0; 0.0 1.0];
+            #     u_candidates[:, i, :] = transpose(rand(MvNormal(dist_mean, dist_cov), cnt_param.cem_init_num_samples));
+            # end
         end
         clamp!(u_candidates, -cnt_param.eamax, cnt_param.eamax)
         # compute cost and CVaR for each control candidates
@@ -239,7 +270,8 @@ end
             u_candidates = u_candidates[order,:,:];
             if iteration == cnt_param.cem_init_iterations
                 # if this is the last iteration, then use the sample with the lowest CVaR
-                @warn "All samples violate CVaR constraints."
+                t = @sprintf "Time %.2f" round(to_sec(w_init.t), digits=5)
+                @warn "$(t) [sec]: All samples violate CVaR constraints."
             end
         else
             # if some samples violate CVaR constraints, then remove them
@@ -254,18 +286,32 @@ end
         elite_samples = u_candidates[1:N_elite,:,:];
         
         # update mean and var
-        new_mean = [];
-        new_cov = [];
+        # new_mean = [];
+        # new_cov = [];
+        # new_mean = zeros(2);
+        # new_cov = zeros(2,2);
         for i in 1:cnt_param.horizon
-            new_mean = vec(mean(elite_samples[:,i,:], dims=1));
-            new_cov = cov(elite_samples[:,i,:], dims=1);
+            # new_mean = vec(mean(elite_samples[:,i,:], dims=1));
+            # new_cov = cov(elite_samples[:,i,:], dims=1);
             # dist_mean[i] = cnt_param.cem_init_alpha*dist_mean[i] + (1-cnt_param.cem_init_alpha)*new_mean;
             # dist_cov[i] = cnt_param.cem_init_alpha*dist_cov[i] + (1-cnt_param.cem_init_alpha)*new_cov;
-            dist_mean[i] = new_mean;
-            dist_cov[i] = new_cov;
+            # clamp!(dist_mean[i], -cnt_param.eamax, cnt_param.eamax)
+            new_mean = vec(mean(elite_samples[:,i,:], dims=1));
+            new_var = vec(var(elite_samples[:,i,:], dims=1));
+            dist_mean[i] = cnt_param.cem_init_alpha*dist_mean[i] + (1-cnt_param.cem_init_alpha)*new_mean;
+            dist_var[i] = cnt_param.cem_init_alpha*dist_var[i] + (1-cnt_param.cem_init_alpha)*new_var;
+            clamp!(dist_mean[i], -cnt_param.eamax, cnt_param.eamax)
+            # new_mean += 1/cnt_param.horizon * vec(mean(elite_samples[:,i,:], dims=1));
+            # new_cov += 1/cnt_param.horizon * cov(elite_samples[:,i,:], dims=1);
         end
+        # dist_mean = cnt_param.cem_init_alpha*dist_mean + (1-cnt_param.cem_init_alpha)*new_mean;
+        # dist_cov = cnt_param.cem_init_alpha*dist_cov + (1-cnt_param.cem_init_alpha)*new_cov;
+
+        # update u_optim
+        u_optim = dist_mean[1];
+        # u_optim = elite_samples[1,1,:];
+        # u_optim = dist_mean;
     end
-    u_optim = dist_mean[1];
     clamp!(u_optim, -cnt_param.eamax, cnt_param.eamax)
 
     return u_optim
@@ -305,9 +351,9 @@ end
 
     # ratio between dto and dtc
     euler_expansion_factor = Int64(cnt_param.dtr/cnt_param.dtc);
-    sim_expansion_factor = Int64(sim_param.dto/cnt_param.dtc);
+    pred_expansion_factor = Int64(sim_param.dto/cnt_param.dtc);
     cnt_idx = Vector(1:cnt_param.horizon)*euler_expansion_factor;
-    predict_idx = Vector(1:sim_param.prediction_steps)*sim_expansion_factor;
+    predict_idx = repeat(Vector(1:sim_param.prediction_steps), inner=pred_expansion_factor);
 
     for i in 1:size(u_candidates, 1)
         u = Vector{Vector{Float64}}(undef, cnt_param.horizon*euler_expansion_factor);
@@ -319,9 +365,9 @@ end
         # forward simulation of inputs
         sim_result = simulate_forward(w_init.e_state, u, sim_param);
         # compute cost
-        cost[i] = compute_cost(sim_result[2:end], u, cost_param, cnt_idx);
+        cost[i] = compute_cost(sim_result[2:end], u, cost_param, cnt_param, cnt_idx);
         # compute CVaR
-        CVaR[i] = compute_CVaR(sim_result[2:end], cnt_param, prediction_mean_dict, prediction_cov_dict, predict_idx);
+        CVaR[i] = compute_CVaR(sim_result[2:end], w_init, cnt_param, prediction_mean_dict, prediction_cov_dict, predict_idx, pred_expansion_factor);
     end
 
     return cost, CVaR
@@ -330,39 +376,50 @@ end
 @inline function compute_cost(sim_results::Vector{RobotState},
                         u::Vector{Vector{Float64}},
                         cost_param::DRCCostParameter,
+                        cnt_param::DRCControlParameter,
                         cnt_idx::Vector{Int64});
     cost = 0.0;
 
-    for i in cnt_idx
-        cost += instant_position_cost(sim_results[i], cost_param);
+    for (horizon, i) in enumerate(cnt_idx)
+        cost += cnt_param.discount^horizon * instant_position_cost(sim_results[i], cost_param);
         if i < length(sim_results)
-            cost += instant_control_cost(u[i], cost_param);
+            cost += cnt_param.discount^horizon * instant_control_cost(u[i], cost_param);
         end
     end
     return cost
 end
 
 @inline function compute_CVaR(sim_result::Vector{RobotState},
+                            w_init::WorldState,
                             cnt_param::DRCControlParameter,
                             prediction_mean_dict::Dict{String, Array{Float64, 2}},
                             prediction_cov_dict::Dict{String, Array{Float64, 3}},
-                            predict_idx::Vector{Int64});
+                            predict_idx::Vector{Int64},
+                            pred_expansion_factor::Int64);
     CVaR = [];
 
-    # radius of human 
-    r = cnt_param.human_size;
-    epsilon = cnt_param.epsilon;
+    current_ado_position_dict = w_init.ap_dict;
 
     for key in keys(prediction_mean_dict)
         # get mean and cov
+        current_pos = current_ado_position_dict[key]';
         mean = prediction_mean_dict[key];
+        pos = vcat(current_pos, mean);
+        interpolated_pos = Array{Float64, 2}(undef, length(sim_result), 2);
+        for i in 1:length(sim_result)-1
+            interpolate = (rem(i, pred_expansion_factor)/pred_expansion_factor)*pos[div(i, pred_expansion_factor)+2,:] + 
+                                (1-(rem(i, pred_expansion_factor)/pred_expansion_factor))*pos[div(i, pred_expansion_factor)+1,:];
+            interpolated_pos[i, :] = interpolate;
+        end
+        interpolated_pos[end, :] = pos[end, :];
+
         cov = prediction_cov_dict[key];
-        for (pred_idx, euler_idx) in enumerate(predict_idx)
+        for (euler_idx, pred_idx) in enumerate(predict_idx)
             e_position = get_position(sim_result[euler_idx]);
             # compute distance between mean and ego agent
-            dist = norm(mean[pred_idx, :] - e_position);
+            dist = norm(interpolated_pos[euler_idx, :] - e_position);
             # compute CVaR
-            append!(CVaR, -(dist - r)^2 + 1/epsilon * tr(cov[pred_idx, :, :]));
+            append!(CVaR, -(dist - cnt_param.human_size)^2 + 1/cnt_param.epsilon * tr(cov[pred_idx, :, :]));
         end
     end
 

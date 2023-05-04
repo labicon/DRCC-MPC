@@ -13,6 +13,7 @@ using RobotOS
 import Convex: Variable, norm, quadform, minimize, dot, solve!
 #using SCS
 using ECOS
+using GPUArrays
 
 struct ControlParameter <: Parameter
     eamax::Float64  # Maximum abolute value of acceleration
@@ -614,6 +615,7 @@ function get_perturbed_schedule(w_init::WorldState,
     # process prediction_dict for further computation
     # note that each value in prediction_dict has to be (num_samples*num_controls, prediction_steps, 2) array
     num_controls = length(u_perturb_arrays)
+    CUDA.allowscalar(true);
     ap_array_gpu = repeat(sim_result.ap_array_gpu, outer=(num_controls, 1, 1, 1));
     measurement_schedule = sim_result.measurement_schedule;
 

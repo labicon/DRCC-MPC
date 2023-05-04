@@ -59,7 +59,7 @@ end
 
 # Ego Robot State
 struct RobotState <: State
-    x::Vector{Float64} # [pos_x, pos_y, vel_x, vel_y]
+    x::Vector{Float64} # [pos_x, pos_y, vel_x. vel_y]
     t::Time
     function RobotState(x::Vector{Float64}, t::Time)
         @assert length(x) == 4 "Invalid ego state dimension!"

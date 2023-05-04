@@ -49,7 +49,7 @@ function evaluate(scene_loader::SceneLoader,
                   ego_pos_goal_vec::Vector{Float64},
                   # target_speed::Float64,
                   measurement_schedule::Vector{Time},
-                  # target_trajectory::Trajectory2D,
+                #   target_trajectory::Trajectory2D,
                   # pos_error_replan::Float64;
                   # ado_inputs_init::Union{Nothing, Dict{T, Vector{Float64}} where T <: Union{PyObject, String}}=nothing, # only needed for CrowdNavController
                   # nominal_control::Union{Nothing, Bool}=nothing, # determines if nominal control is used in RSSAC controller
@@ -82,6 +82,7 @@ function evaluate(scene_loader::SceneLoader,
     last_control_update_time = w_init.t;
     wait(controller.control_update_task);
     push!(w_history, w_init);
+    # push!(target_trajectory_history, target_trajectory);
     if typeof(controller) == DRCController
         push!(prediction_dict_history, get_clipped_prediction_dict(controller.prediction_dict,
                                                                    controller.sim_param.num_samples));
@@ -104,17 +105,21 @@ function evaluate(scene_loader::SceneLoader,
             # Get new measurement
             msg_1 = "New measurement is obtained."
             push!(log, (current_time, msg_1))
-            ado_inputs = fetch_ado_positions!(scene_loader, return_full_state=true);
-            ado_positions = reduce_to_positions(ado_inputs);
-            if !isnothing(ado_id_removed)
-                key_to_remove = nothing
-                for key in keys(ado_positions)
-                    if pybuiltin("str")(key) == ado_id_removed
-                        key_to_remove = key
+            if typeof(scene_loader) == TrajectronSceneLoader
+                ado_inputs = fetch_ado_positions!(scene_loader, return_full_state=true);
+                ado_positions = reduce_to_positions(ado_inputs);
+                if !isnothing(ado_id_removed)
+                    key_to_remove = nothing
+                    for key in keys(ado_positions)
+                        if pybuiltin("str")(key) == ado_id_removed
+                            key_to_remove = key
+                        end
                     end
+                    delete!(ado_positions, key_to_remove)
+                    delete!(ado_inputs, key_to_remove)
                 end
-                delete!(ado_positions, key_to_remove)
-                delete!(ado_inputs, key_to_remove)
+            elseif typeof(scene_loader) == SyntheticSceneLoader
+                ado_positions = fetch_ado_positions!(scene_loader, controller.prediction_dict);
             end
             # Starting timer to keep track of computation time
             process_start_time = time();
@@ -146,6 +151,20 @@ function evaluate(scene_loader::SceneLoader,
             # Starting timer to keep track of computation time
             process_start_time = time();
         end
+
+        # Update target trajectory if necessary
+        pos_error = get_position(w_history[end].e_state) -
+                    get_position(target_trajectory, w_history[end].t);
+        if norm(pos_error) > pos_error_replan
+            msg = "Position deviation: $(round(norm(pos_error), digits=4)). Target Trajectory is replanned."
+            push!(log, (current_time, msg));
+            target_trajectory = get_nominal_trajectory(w_history[end].e_state,
+                                                       ego_pos_goal_vec,
+                                                       target_speed,
+                                                       to_sec(sim_end_time - w_init.t),
+                                                       prediction_horizon);
+        end
+
         # Proceed further
         if current_time < sim_end_time
             if to_sec(current_time) ≈ to_sec(last_control_update_time) + controller.cnt_param.dtr;
@@ -174,7 +193,7 @@ function evaluate(scene_loader::SceneLoader,
                     instant_collision_cost(w_history[end].e_state, ap,
                                            controller.sim_param.cost_param)*
                     controller.sim_param.dtc;
-                total_collision += check_collision(w_history[end].e_state, ap);
+                total_collision += check_collision(w_history[end].e_state, ap, controller.sim_param.cost_param);
             end
 
             # Ego transition for next timestep
@@ -207,6 +226,7 @@ function evaluate(scene_loader::SceneLoader,
         total_collision_cost +=
             terminal_collision_cost(w_history[end].e_state, ap,
                                     controller.sim_param.cost_param);
+        total_collision += check_collision(w_history[end].e_state, ap, controller.sim_param.cost_param);
     end
 
     # Finish All the Remaining Tasks

@@ -196,6 +196,7 @@ function evaluate(scene_loader::SceneLoader,
                                                                                controller.sim_param.num_samples,
                                                                                controller.sim_result.u_nominal_idx);
                 end
+                wait(controller.prediction_task);
             end
             w_history[end].ap_dict = convert_nodes_to_str(ado_positions);
             w_history[end].t_last_m = current_time;
@@ -230,6 +231,7 @@ function evaluate(scene_loader::SceneLoader,
                     schedule_control_update!(controller, w_history[end], target_trajectory, log=log);
                 end
                 last_control_update_time = w_history[end].t
+                wait(controller.control_update_task)
             end
             # Get control for current_time
             if typeof(controller) == RSSACController
@@ -246,7 +248,7 @@ function evaluate(scene_loader::SceneLoader,
 
             # Accumulate cost
             total_position_cost +=
-                instant_position_cost(w_history[end].e_state, target_trajectory,
+                instant_evaluation_position_cost(w_history[end].e_state, ego_pos_goal_vec,
                                       controller.sim_param.cost_param)*
                 controller.sim_param.dtc;
             total_control_cost +=
@@ -296,7 +298,7 @@ function evaluate(scene_loader::SceneLoader,
 
     # Add Terminal Cost
     total_position_cost +=
-        terminal_position_cost(w_history[end].e_state, target_trajectory,
+        terminal_evaluation_position_cost(w_history[end].e_state, ego_pos_goal_vec,
                                controller.sim_param.cost_param);
     for ap in values(w_history[end].ap_dict)
         total_collision_cost +=

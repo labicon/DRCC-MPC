@@ -10,6 +10,8 @@ mutable struct DRCCostParameter <: Parameter
     α_col::Float64           # Magnitude parameter for collision exponential cost.
     β_col::Float64        # Relative weight between instant and terminal col cost
     λ_col::Float64           # Bandwidth parameter for collision exponential cost.
+
+    human_size::Float64   # Size of human agent
 end
 
 # Instantaneous Cost
@@ -43,9 +45,10 @@ end
 
 # # Check Collision
 function check_collision(e_state::RobotState,
-                            apvec::Vector{Float64})
+                            apvec::Vector{Float64},
+                            param::DRCCostParameter)
     @assert length(apvec) == 2 "Invalid ado state dimension!"
-    if norm(get_position(e_state) - apvec) < 0.5
+    if norm(get_position(e_state) - apvec) < param.human_size
         collision = 1
     else
         collision = 0

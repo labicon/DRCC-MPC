@@ -755,7 +755,7 @@ function visualize!(color_dict::Dict, w::WorldState,
     return plt
 end
 
-function make_gif(result::DRCEvaluationResult,
+function make_gif(result::DRCEvaluationResult;
                   dtplot::Float64,
                   fps::Int64,
                   figsize::Tuple{Int64, Int64},

@@ -125,10 +125,10 @@ function simulate_forward(e_init::RobotState,
     dtc = Float32(sim_param.dtc);
     # compute velocity (Euler integration)
     CUDA.accumulate!(+, out_vel, u_array_gpu.*sim_param.dtc, dims=2);
-    out_vel = cat(cu(zeros(size(u_array_gpu, 1), 1, 2)), out_vel, dims=2);
-    ev_init = get_velocity(e_init);
-    out_vel[:, :, 1] .+= Float32(ev_init[1]);
-    out_vel[:, :, 2] .+= Float32(ev_init[2]);
+    out_vel = cat(out_vel, cu(zeros(size(u_array_gpu, 1), 1, 2)), dims=2);
+    # ev_init = get_velocity(e_init);
+    # out_vel[:, :, 1] .+= Float32(ev_init[1]);
+    # out_vel[:, :, 2] .+= Float32(ev_init[2]);
 
     # compute position (Euler integration)
     out_pos = similar(u_array_gpu)

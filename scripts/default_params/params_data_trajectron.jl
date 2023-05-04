@@ -24,5 +24,5 @@ ego_pos_init_vec = [5., 0.5] .+ [-5.263534, -5.314636];                         
 ego_pos_goal_vec = [5., 8.9] .+ [-5.263534, -5.314636];                             # goal ego position [x, y] [m]
 # Other parameters
 pos_error_replan = 2.0;                                                             # position error for replanning target trajectory [m]
-target_speed = 0.7;                                                                 # target speed [m/s]
+target_speed = 1.0;                                                                 # target speed [m/s]
 sim_horizon = 10.0;                                                                 # simulation time horizon [s]

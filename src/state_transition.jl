@@ -13,16 +13,15 @@ using Random
 function transition(e_state::RobotState,
                     u::Vector{Float64})
     @assert length(u) == 2 "Invalid control input dimension!"
-    ev = get_velocity(e_state);
-    return [ev; u]
+    return [u; 0.0; 0.0]
 end
 
 function transition_jacobian(ex_vec::Vector{Float64},
                              u::Vector{Float64})
     @assert length(ex_vec) == 4 "Invalid robot state dimension!"
     @assert length(u) == 2 "Invalid control input dimension!"
-    A = [0.0 0.0 1.0 0.0;
-         0.0 0.0 0.0 1.0;
+    A = [0.0 0.0 0.0 0.0;
+         0.0 0.0 0.0 0.0;
          0.0 0.0 0.0 0.0;
          0.0 0.0 0.0 0.0];
     return A
@@ -34,10 +33,10 @@ function transition_jacobian(e_state::RobotState,
 end
 
 function transition_control_coeff(e_state::RobotState)
-    H = [0.0 0.0;
+    H = [1.0 0.0;
+         0.0 1.0;
          0.0 0.0;
-         1.0 0.0;
-         0.0 1.0];
+         0.0 0.0];
     return H
 end
 
@@ -46,13 +45,7 @@ function transition(e_state::RobotState,
                     u::Vector{Float64},
                     dt::Real)
     x_new = e_state.x + transition(e_state, u)*dt;
+    x_new[3] = u[1]
+    x_new[4] = u[2]
     return RobotState(x_new, e_state.t + Duration(dt))
 end
-
-# function transition(e_state::RobotState,
-#                     u::Vector{Float64},
-#                     dt::Real)
-#     dx = [u[1]*dt, u[2]*dt, -e_state.x[1] + u[1], -e_state.x[2] + u[2]]
-#     x_new = e_state.x + dx
-#     return RobotState(x_new, e_state.t + Duration(dt))
-# end
