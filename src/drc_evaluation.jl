@@ -15,7 +15,7 @@ struct DRCEvaluationResult
     # scene_param::Union{TrajectronSceneParameter, SyntheticSceneParameter} # error for JLD2?
     # predictor_param::Union{TrajectronPredictorParameter, GaussianPredictorParameter} # error for JLD2?
     # nominal_control::Bool
-    # target_trajectory_history::Vector{Trajectory2D}
+    target_trajectory_history::Vector{Trajectory2D}
     measurement_time_history::Vector{Time}
     sim_horizon::Float64
     w_history::Vector{WorldState}
@@ -47,10 +47,10 @@ function evaluate(scene_loader::SceneLoader,
                   controller::DRCController,
                   w_init::WorldState,
                   ego_pos_goal_vec::Vector{Float64},
-                  # target_speed::Float64,
+                  target_speed::Float64,
                   measurement_schedule::Vector{Time},
-                #   target_trajectory::Trajectory2D,
-                  # pos_error_replan::Float64;
+                  target_trajectory::Trajectory2D,
+                  pos_error_replan::Float64;
                   # ado_inputs_init::Union{Nothing, Dict{T, Vector{Float64}} where T <: Union{PyObject, String}}=nothing, # only needed for CrowdNavController
                   # nominal_control::Union{Nothing, Bool}=nothing, # determines if nominal control is used in RSSAC controller
                   ado_id_removed::Union{Nothing, String}=nothing, # determines if ado_id_removed is removed from scenes with TrajectronSceneLoader
@@ -68,7 +68,7 @@ function evaluate(scene_loader::SceneLoader,
     # Logs
     w_history = Vector{WorldState}();
     u_history = Vector{Vector{Float64}}();
-    # target_trajectory_history = Vector{Trajectory2D}();
+    target_trajectory_history = Vector{Trajectory2D}();
     # u_nominal_idx_history = Vector{Int64}();
     # nominal_trajectory_history = Vector{Vector{Vector{Float64}}}();
     log = Vector{Tuple{Time, String}}();
@@ -78,11 +78,11 @@ function evaluate(scene_loader::SceneLoader,
         @assert istaskdone(controller.prediction_task)
     end
     # Compute First Control
-    schedule_control_update!(controller, w_init, log);
+    schedule_control_update!(controller, w_init, target_trajectory, log=log);
     last_control_update_time = w_init.t;
     wait(controller.control_update_task);
     push!(w_history, w_init);
-    # push!(target_trajectory_history, target_trajectory);
+    push!(target_trajectory_history, target_trajectory);
     if typeof(controller) == DRCController
         push!(prediction_dict_history, get_clipped_prediction_dict(controller.prediction_dict,
                                                                    controller.sim_param.num_samples));
@@ -118,8 +118,14 @@ function evaluate(scene_loader::SceneLoader,
                     delete!(ado_positions, key_to_remove)
                     delete!(ado_inputs, key_to_remove)
                 end
-            elseif typeof(scene_loader) == SyntheticSceneLoader
-                ado_positions = fetch_ado_positions!(scene_loader, controller.prediction_dict);
+            elseif typeof(scene_loader) == SyntheticSceneLoader || typeof(scene_loader) == ShiftedSyntheticSceneLoader
+                if typeof(controller) == DRCController
+                    ado_positions = fetch_ado_positions!(scene_loader, controller.prediction_dict);
+                else
+                    prediction_dict = sample_future_ado_positions!(predictor,
+                                                                    w_history[end].ap_dict);
+                    ado_positions = fetch_ado_positions!(scene_loader, prediction_dict);
+                end
             end
             # Starting timer to keep track of computation time
             process_start_time = time();
@@ -152,24 +158,24 @@ function evaluate(scene_loader::SceneLoader,
             process_start_time = time();
         end
 
-        # Update target trajectory if necessary
-        pos_error = get_position(w_history[end].e_state) -
-                    get_position(target_trajectory, w_history[end].t);
-        if norm(pos_error) > pos_error_replan
-            msg = "Position deviation: $(round(norm(pos_error), digits=4)). Target Trajectory is replanned."
-            push!(log, (current_time, msg));
-            target_trajectory = get_nominal_trajectory(w_history[end].e_state,
-                                                       ego_pos_goal_vec,
-                                                       target_speed,
-                                                       to_sec(sim_end_time - w_init.t),
-                                                       prediction_horizon);
-        end
+        # # Update target trajectory if necessary
+        # pos_error = get_position(w_history[end].e_state) -
+        #             get_position(target_trajectory, w_history[end].t);
+        # if norm(pos_error) > pos_error_replan
+        #     msg = "Position deviation: $(round(norm(pos_error), digits=4)). Target Trajectory is replanned."
+        #     push!(log, (current_time, msg));
+        #     target_trajectory = get_nominal_trajectory(w_history[end].e_state,
+        #                                                ego_pos_goal_vec,
+        #                                                target_speed,
+        #                                                to_sec(sim_end_time - w_init.t),
+        #                                                prediction_horizon);
+        # end
 
         # Proceed further
         if current_time < sim_end_time
             if to_sec(current_time) ≈ to_sec(last_control_update_time) + controller.cnt_param.dtr;
                 # Schedule control update
-                schedule_control_update!(controller, w_history[end], log);
+                schedule_control_update!(controller, w_history[end], target_trajectory, log=log);
                 last_control_update_time = w_history[end].t
                 wait(controller.control_update_task);
             end
@@ -203,6 +209,7 @@ function evaluate(scene_loader::SceneLoader,
 
             push!(u_history, u);
             push!(w_history, w_new);
+            push!(target_trajectory_history, target_trajectory);
             push!(prediction_dict_history, get_clipped_prediction_dict(controller.prediction_dict,
                                                                         controller.sim_param.num_samples));
 
@@ -252,6 +259,7 @@ function evaluate(scene_loader::SceneLoader,
         eval_result =
         DRCEvaluationResult(controller.sim_param, controller.cnt_param,
                          # scene_loader.param, controller.predictor.param,
+                         target_trajectory_history,
                          measurement_schedule, to_sec(sim_end_time - w_init.t),
                          w_history, u_history, 
                          prediction_dict_history,

@@ -184,3 +184,30 @@ function fetch_ado_positions!(loader::SyntheticSceneLoader,
     end
     return deepcopy(loader.ado_pos_dict)
 end
+
+# Shifted Synthetic Scene Loader
+struct ShiftedSyntheticSceneParameter <: Parameter
+    rng::AbstractRNG
+end
+
+mutable struct ShiftedSyntheticSceneLoader <: SceneLoader
+    param::ShiftedSyntheticSceneParameter
+    ado_pos_dict::Dict{String, Vector{Float64}}
+    ado_true_vel_dict::Dict{String, Vector{DiagNormal}}
+end
+
+function fetch_ado_positions!(loader::ShiftedSyntheticSceneLoader,
+                              prediction_dict::Dict{String, Array{Float64, 3}})
+    @assert keys(loader.ado_pos_dict) == keys(prediction_dict)
+    for key in keys(prediction_dict)
+        # # sample next position independently per ado agent from prediction_dict
+        # num_samples = size(prediction_dict[key], 1);
+        # sample_idx = rand(loader.param.rng, 1:num_samples)
+        # loader.ado_pos_dict[key] = prediction_dict[key][sample_idx, 1, :];
+        # Propagation for shifted synthetic scene
+        coin = bitrand(1)[1];
+        d = loader.ado_true_vel_dict[key][coin+1]
+        loader.ado_pos_dict[key] += rand(loader.param.rng, d).*0.4;
+    end
+    return deepcopy(loader.ado_pos_dict)
+end

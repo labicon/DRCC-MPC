@@ -27,6 +27,7 @@ struct EvaluationResult
     total_cnt_cost::Float64
     total_pos_cost::Float64
     total_col_cost::Float64
+    total_col::Int64
     log::Vector{Tuple{Time, String}}
 end
 
@@ -103,6 +104,7 @@ function evaluate(scene_loader::SceneLoader,
     total_position_cost = 0.0;
     total_control_cost = 0.0;
     total_collision_cost = 0.0;
+    total_collision = 0;
     # Logs
     w_history = Vector{WorldState}();
     u_history = Vector{Vector{Float64}}();
@@ -166,7 +168,7 @@ function evaluate(scene_loader::SceneLoader,
                     delete!(ado_positions, key_to_remove)
                     delete!(ado_inputs, key_to_remove)
                 end
-            elseif typeof(scene_loader) == SyntheticSceneLoader
+            elseif typeof(scene_loader) == SyntheticSceneLoader || typeof(scene_loader) == ShiftedSyntheticSceneLoader
                 if typeof(controller) == RSSACController
                     ado_positions = fetch_ado_positions!(scene_loader, controller.prediction_dict);
                 else
@@ -259,6 +261,7 @@ function evaluate(scene_loader::SceneLoader,
                     instant_collision_cost(w_history[end].e_state, ap,
                                            controller.sim_param.cost_param)*
                     controller.sim_param.dtc;
+                total_collision += check_collision(w_history[end].e_state, ap)
             end
 
             # Ego transition for next timestep
@@ -304,6 +307,7 @@ function evaluate(scene_loader::SceneLoader,
         total_collision_cost +=
             terminal_collision_cost(w_history[end].e_state, ap,
                                     controller.sim_param.cost_param);
+        total_collision += check_collision(w_history[end].e_state, ap)
     end
 
     # Finish All the Remaining Tasks
@@ -333,7 +337,7 @@ function evaluate(scene_loader::SceneLoader,
                          measurement_schedule, to_sec(sim_end_time - w_init.t),
                          w_history, u_history, u_schedule_history, nominal_trajectory_history,
                          prediction_dict_history, u_nominal_idx_history,
-                         total_control_cost, total_position_cost, total_collision_cost, log);
+                         total_control_cost, total_position_cost, total_collision_cost, total_collision, log);
     elseif typeof(controller) == BICController
         eval_result =
         BICEvaluationResult(controller.sim_param, controller.cnt_param,

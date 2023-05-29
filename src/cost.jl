@@ -107,3 +107,15 @@ terminal_position_cost_gradient(e_state::RobotState,
 terminal_collision_cost_gradient(e_state::RobotState, apvec::Vector{Float64},
                                  param::CostParameter) =
     param.β_col*instant_collision_cost_gradient(e_state, apvec, param);
+
+# # Check Collision
+function check_collision(e_state::RobotState,
+    apvec::Vector{Float64})
+    @assert length(apvec) == 2 "Invalid ado state dimension!"
+    if norm(get_position(e_state) - apvec) < 0.4
+        collision = 1
+    else
+        collision = 0
+    end
+    return collision
+end

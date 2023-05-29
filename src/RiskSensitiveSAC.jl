@@ -281,7 +281,9 @@ export
     reduce_to_positions,
     get_trajectory_for_ado,
     SyntheticSceneParameter,
-    SyntheticSceneLoader
+    SyntheticSceneLoader,
+    ShiftedSyntheticSceneParameter,
+    ShiftedSyntheticSceneLoader
 include("scene_loader.jl")
 
 # Predictor

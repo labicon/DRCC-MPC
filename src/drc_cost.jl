@@ -24,6 +24,15 @@ function instant_position_cost(e_state::RobotState,
     return position_cost
 end
 
+function instant_position_cost(e_state::RobotState,
+                                target_trajectory::Trajectory2D,
+                                param::DRCCostParameter)
+    ep_target = get_position(target_trajectory, e_state.t);
+    position_error = get_position(e_state) - ep_target;
+    position_cost = 0.5*position_error'*param.Cep*position_error;
+    return position_cost
+end
+
 # # Control
 function instant_control_cost(u::Vector{Float64},
                                 param::DRCCostParameter)

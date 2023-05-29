@@ -118,9 +118,53 @@ function control!(controller::DRCController,
     return u
 end
 
+function adjust_old_prediction!(controller::DRCController,
+                                previous_ado_pos_dict::Dict{String, Vector{Float64}},
+                                latest_ado_pos_dict::Dict{String, Vector{Float64}})
+    @assert keys(controller.prediction_dict) == keys(previous_ado_pos_dict)
+
+    ado_agents_removed = setdiff(keys(previous_ado_pos_dict),
+                                    keys(latest_ado_pos_dict));
+    ado_agents_added = setdiff(keys(latest_ado_pos_dict),
+                                keys(previous_ado_pos_dict));
+    keys_list = collect(keys(controller.prediction_dict))
+    for key in keys_list
+        if in(key, ado_agents_removed)
+            # If this ado_agent is removed in latest_ado_pos_dict, then remove
+            # it from prediction_dict.
+            pop!(controller.prediction_dict, key)
+        else
+            if typeof(controller.predictor) != OraclePredictor # skip this step for OraclePredictor as predictions are perfect.
+                # If this ado_agent is existent in both previous and latest
+                # ado_pos_dict, then reuse and adjust the previous prediction.
+                (diff_x, diff_y) = latest_ado_pos_dict[key] -
+                                    previous_ado_pos_dict[key];
+                controller.prediction_dict[key][:, :, 1] .+= diff_x;
+                controller.prediction_dict[key][:, :, 2] .+= diff_y;
+            end
+        end
+    end
+    for key in ado_agents_added
+        # Treat this newly added ado_agent as a static obstacle
+        # (until the new prediction becomes available to the controller)
+        num_controls = 1;
+        controller.prediction_dict[key] =
+            zeros(controller.sim_param.num_samples*num_controls,
+                    controller.sim_param.prediction_steps, 2);
+        controller.prediction_dict[key][:, :, 1] .+= latest_ado_pos_dict[key][1];
+        controller.prediction_dict[key][:, :, 2] .+= latest_ado_pos_dict[key][2];
+    end
+    @assert keys(controller.prediction_dict) == keys(latest_ado_pos_dict)
+end
+
 function schedule_prediction!(controller::DRCController,
                                 ado_pos_dict::Dict,
+                                previous_ado_pos_dict::Union{Nothing, Dict{String, Vector{Float64}}}=nothing,
                                 e_init::Union{Nothing, RobotState}=nothing);
+    if !isnothing(previous_ado_pos_dict)
+        adjust_old_prediction!(controller, previous_ado_pos_dict,
+                                convert_nodes_to_str(reduce_to_positions(ado_pos_dict)));
+    end
     if typeof(controller.predictor) == TrajectronPredictor
         controller.prediction_task = @task begin
             if controller.predictor.param.use_robot_future
@@ -168,6 +212,7 @@ end
 
 function schedule_control_update!(controller::DRCController,
                                     w_init::WorldState,
+                                    target_trajectory::Trajectory2D;
                                     log::Union{Nothing, Vector{Tuple{Time, String}}}=nothing);
     if !isnothing(controller.prediction_task) &&
         istaskdone(controller.prediction_task)
@@ -187,7 +232,7 @@ function schedule_control_update!(controller::DRCController,
         controller.tcalc_actual_tmp, controller.u_value_tmp = 
             drc_control_update!(controller, controller.cnt_param,
                         controller.prediction_dict,
-                        w_init);
+                        w_init, target_trajectory);
     end
     schedule(controller.control_update_task)
 end
@@ -196,9 +241,10 @@ end
 @inline function drc_control_update!(controller::DRCController,
                                     cnt_param::DRCControlParameter,
                                     prediction_dict::Dict{String, Array{Float64, 3}},
-                                    w_init::WorldState)
+                                    w_init::WorldState,
+                                    target_trajectory::Trajectory2D)
     tcalc_actual = 
-        @elapsed u = get_action!(controller, cnt_param, prediction_dict, w_init);
+        @elapsed u = get_action!(controller, cnt_param, prediction_dict, w_init, target_trajectory);
 
     if tcalc_actual >= cnt_param.tcalc
         # tcalc actual has exceeded allowable computation time
@@ -212,13 +258,14 @@ end
 function get_action!(controller::DRCController,
                     cnt_param::DRCControlParameter,
                     prediction_dict::Dict{String, Array{Float64, 3}},
-                    w_init::WorldState)
+                    w_init::WorldState,
+                    target_trajectory::Trajectory2D)
 
     # compute mean & cov of human transitions
     mean_dict, cov_dict = get_mean_cov(prediction_dict);
 
     # CEM optimization 
-    u = cem_optimization!(controller, cnt_param, mean_dict, cov_dict, w_init);
+    u = cem_optimization!(controller, cnt_param, mean_dict, cov_dict, w_init, target_trajectory);
     return u
 end
 
@@ -226,7 +273,12 @@ end
                                     cnt_param::DRCControlParameter,
                                     prediction_mean_dict::Dict{String, Array{Float64, 2}},
                                     prediction_cov_dict::Dict{String, Array{Float64, 3}},
-                                    w_init::WorldState)
+                                    w_init::WorldState,
+                                    target_trajectory::Trajectory2D)
+    u_base = [0.0, 0.0];
+    u_cand = append!([u_base],
+                     [round.([a*cos(deg2rad(θ)), a*sin(deg2rad(θ))], digits=5)
+                     for a = [1., 2.] for θ = 0.:45.:(360. - 45.)]);            # nominal control candidate value [ax, ay] [m/s^2]
     # initialize control candidates
     # dist_mean = [cnt_param.cem_init_mean for i in 1:cnt_param.horizon];
     # dist_cov = [cnt_param.cem_init_cov for i in 1:cnt_param.horizon];
@@ -234,13 +286,22 @@ end
     # dist_cov = cnt_param.cem_init_cov;
     dist_mean = [cnt_param.cem_init_mean for i in 1:cnt_param.horizon];
     dist_var = [[1.0, 1.0] for i in 1:cnt_param.horizon];
+    # u_cand_length = length(u_cand);
+    # dist_init = 1/u_cand_length * ones(u_cand_length);
+    # dist = [dist_init for i in 1:cnt_param.horizon];
 
     u_optim = cnt_param.cem_init_mean;
+    # u_optim = u_base;
     
     for iteration in 1:cnt_param.cem_init_iterations
         # sample control candidates
         u_candidates = zeros(cnt_param.cem_init_num_samples, cnt_param.horizon, 2);
+        # samples = zeros(cnt_param.cem_init_num_samples, cnt_param.horizon);
         for i in 1:cnt_param.horizon
+            # samples[:, i] = rand(Categorical(dist[i]), cnt_param.cem_init_num_samples);
+            # for j in 1:cnt_param.cem_init_num_samples
+            #     u_candidates[j, i, :] = u_cand[Int(samples[j,i])];
+            # end
             lb_dist = dist_mean[i] .+ cnt_param.eamax;
             ub_dist = cnt_param.eamax .- dist_mean[i];
             dist_var[i] = min(min((lb_dist/2).^2, ((ub_dist/2).^2)), dist_var[i]);
@@ -260,7 +321,7 @@ end
         end
         clamp!(u_candidates, -cnt_param.eamax, cnt_param.eamax)
         # compute cost and CVaR for each control candidates
-        cost, CVaR = compute_cost_CVaR(u_candidates, cnt_param, controller.sim_param, 
+        cost, CVaR = compute_cost_CVaR(u_candidates, cnt_param, controller.sim_param, target_trajectory,
                                         prediction_mean_dict, prediction_cov_dict, w_init, controller.cost_param);
         
         # remove samples which violates CVaR constraint
@@ -268,6 +329,7 @@ end
             # if all samples violate CVaR constraints, then use the sample with the lowest CVaR
             order = sortperm(CVaR);
             u_candidates = u_candidates[order,:,:];
+            # samples = samples[order,:];
             if iteration == cnt_param.cem_init_iterations
                 # if this is the last iteration, then use the sample with the lowest CVaR
                 t = @sprintf "Time %.2f" round(to_sec(w_init.t), digits=5)
@@ -281,9 +343,11 @@ end
             order = sortperm(cost);
             cost = cost[order];
             u_candidates = u_candidates[order,:,:];
+            # samples = samples[order,:];
         end
         N_elite = min(cnt_param.cem_init_num_elites, size(u_candidates, 1));
         elite_samples = u_candidates[1:N_elite,:,:];
+        # elite_samples = samples[1:N_elite,:];
         
         # update mean and var
         # new_mean = [];
@@ -303,14 +367,18 @@ end
             clamp!(dist_mean[i], -cnt_param.eamax, cnt_param.eamax)
             # new_mean += 1/cnt_param.horizon * vec(mean(elite_samples[:,i,:], dims=1));
             # new_cov += 1/cnt_param.horizon * cov(elite_samples[:,i,:], dims=1);
+            # for j in 1:u_cand_length
+            #     dist[i][j] = length(findall(x -> x == j, elite_samples[:,i]))/N_elite;
+            # end
         end
         # dist_mean = cnt_param.cem_init_alpha*dist_mean + (1-cnt_param.cem_init_alpha)*new_mean;
         # dist_cov = cnt_param.cem_init_alpha*dist_cov + (1-cnt_param.cem_init_alpha)*new_cov;
 
         # update u_optim
-        u_optim = dist_mean[1];
-        # u_optim = elite_samples[1,1,:];
+        # u_optim = dist_mean[1];
+        u_optim = elite_samples[1,1,:];
         # u_optim = dist_mean;
+        # u_optim = u_cand[Int(samples[1,1])];
     end
     clamp!(u_optim, -cnt_param.eamax, cnt_param.eamax)
 
@@ -341,6 +409,7 @@ end
 @inline function compute_cost_CVaR(u_candidates::Array{Float64, 3},
                                 cnt_param::DRCControlParameter,
                                 sim_param::SimulationParameter,
+                                target_trajectory::Trajectory2D,
                                 prediction_mean_dict::Dict{String, Array{Float64, 2}},
                                 prediction_cov_dict::Dict{String, Array{Float64, 3}},
                                 w_init::WorldState,
@@ -365,7 +434,7 @@ end
         # forward simulation of inputs
         sim_result = simulate_forward(w_init.e_state, u, sim_param);
         # compute cost
-        cost[i] = compute_cost(sim_result[2:end], u, cost_param, cnt_param, cnt_idx);
+        cost[i] = compute_cost(sim_result[2:end], u, cost_param, cnt_param, cnt_idx, target_trajectory);
         # compute CVaR
         CVaR[i] = compute_CVaR(sim_result[2:end], w_init, cnt_param, prediction_mean_dict, prediction_cov_dict, predict_idx, pred_expansion_factor);
     end
@@ -377,7 +446,8 @@ end
                         u::Vector{Vector{Float64}},
                         cost_param::DRCCostParameter,
                         cnt_param::DRCControlParameter,
-                        cnt_idx::Vector{Int64});
+                        cnt_idx::Vector{Int64},
+                        target_trajectory::Trajectory2D);
     cost = 0.0;
 
     for (horizon, i) in enumerate(cnt_idx)
@@ -416,15 +486,23 @@ end
         cov = prediction_cov_dict[key];
         for (euler_idx, pred_idx) in enumerate(predict_idx)
             e_position = get_position(sim_result[euler_idx]);
+            # relative vector to the robot position from the human position
+            rel_vec = e_position - interpolated_pos[euler_idx, :];
             # compute distance between mean and ego agent
-            dist = norm(interpolated_pos[euler_idx, :] - e_position);
+            dist = norm(rel_vec) - cnt_param.human_size;
+            # Find the ellipsoid
+            # (x - p_human)^T E (x - p_human) = 1 & E = Q D Q^t
+            R = maximum([100.0, dist]);
+            D = diagm([1/dist^2, 1/R^2]);
+            Q = [rel_vec[1]/dist rel_vec[2]/dist; -rel_vec[2]/dist rel_vec[1]/dist];
+            E = Q*D*transpose(Q);
             # compute CVaR
-            append!(CVaR, -(dist - cnt_param.human_size)^2 + 1/cnt_param.epsilon * tr(cov[pred_idx, :, :]));
+            append!(CVaR, -1 + 1/cnt_param.epsilon * tr(cov[pred_idx, :, :] * E));
         end
     end
 
     if isempty(CVaR)
-        return -1.0
+        return -100.0
     else
         return maximum(CVaR)
     end

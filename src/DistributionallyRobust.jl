@@ -273,7 +273,9 @@ export
     reduce_to_positions,
     get_trajectory_for_ado,
     SyntheticSceneParameter,
-    SyntheticSceneLoader
+    SyntheticSceneLoader,
+    ShiftedSyntheticSceneParameter,
+    ShiftedSyntheticSceneLoader
 include("scene_loader.jl")
 
 # Predictor
@@ -315,6 +317,7 @@ include("drc_forward_backward_simulation.jl")
 export
     DRCController,
     control!,
+    adjust_old_prediction!,
     schedule_prediction!,
     schedule_control_update!,
     drc_control_update!,
@@ -327,53 +330,6 @@ export
     get_robot_present_and_future,
     DRCControlParameter
 include("distributionally_robust_controller.jl")
-
-# # Risk Sensitive SAC Controller
-# export
-#     control!,
-#     adjust_old_prediction!,
-#     schedule_prediction!,
-#     schedule_control_update!,
-#     convert_to_schedule,
-#     get_nominal_u_arrays,
-#     get_robot_present_and_future,
-#     get_control_coeffs,
-#     solve_multi_qcqp,
-#     get_control_schedule,
-#     determine_control_time,
-#     sac_control_update,
-#     ControlParameter,
-#     ControlSchedule,
-#     RSSACController
-# include("rs_sac_controller.jl")
-
-# Buffered Input Cells and Related Functions (benchmark)
-# export
-#     vertex_direction,
-#     sort_vertices,
-#     scale_and_shift,
-#     find_extrema,
-#     retract_cell,
-#     get_input_positions,
-#     compute_buffered_voronoi_cells,
-#     compute_buffered_input_cell,
-#     project,
-#     lq_tracking,
-#     BICControlParameter,
-#     BICController,
-#     bic_control_update,
-#     bic_parameter_setup
-# include("bic.jl")
-
-# # CrowdNav RL Controller (benchmark)
-# export
-#     CrowdNavControlParameter,
-#     CrowdNavController,
-#     get_action!,
-#     crowdnav_control_update!,
-#     control!,
-#     schedule_control_update!
-# include("crowd_nav_controller.jl")
 
 # Evaluation Functions
 export

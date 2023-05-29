@@ -2,7 +2,7 @@ using Distributions
 using LinearAlgebra
 
 # Scene loader & Predictor parameters
-scene_mode = "synthetic";                                                           # "synthetic" or "data"
+scene_mode = "shiftedsynthetic";                                                           # "synthetic" or "data"
 prediction_mode = "gaussian";                                                       # "gaussian" or "trajectron" or "oracle"
 prediction_device = "cpu";                                                          # "cpu" or "cuda"
 prediction_steps = 10;                                                              # number of steps to look ahead in the future
@@ -42,9 +42,9 @@ prediction_rng_seed = 1;                                                        
 deterministic = false;                                                              # if true, a single, deterministic sample is drawn regardless of random seed. (num_samples = 1 is needed)
 num_samples = 30;                                                                   # number of trajectory samples (per ado agent)
 # Cost Parameters
-include("params_cost.jl")
+include("params_drc_cost.jl")
 # Control Parameters
-include("params_control.jl")
+include("params_drc_control.jl")
 # Ego initial state
 ego_pos_init_vec = [-5., 0.];                                                       # initial ego position [x, y] [m]
 ego_pos_goal_vec = [5., 0.];                                                        # goal ego position [x, y] [m]
