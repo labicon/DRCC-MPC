@@ -275,7 +275,9 @@ export
     SyntheticSceneParameter,
     SyntheticSceneLoader,
     ShiftedSyntheticSceneParameter,
-    ShiftedSyntheticSceneLoader
+    ShiftedSyntheticSceneLoader,
+    StopSyntheticSceneParameter,
+    StopSyntheticSceneLoader
 include("scene_loader.jl")
 
 # Predictor
@@ -288,7 +290,9 @@ export
     OraclePredictorParameter,
     OraclePredictor,
     GaussianPredictorParameter,
-    GaussianPredictor
+    GaussianPredictor,
+    StopGaussianPredictorParameter,
+    StopGaussianPredictor
 include("predictor.jl")
 
 # Forward-Backward Simulation

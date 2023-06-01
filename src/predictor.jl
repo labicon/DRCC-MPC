@@ -264,3 +264,99 @@ function sample_future_ado_positions!(predictor::GaussianPredictor,
     end
     return outputs_dict
 end
+
+# Gaussian predictor which stops in the middle
+# Gaussian Predictor
+struct StopGaussianPredictorParameter <: Parameter
+    #dto::Float64
+    prediction_steps::Int64
+    num_samples::Int64
+    deterministic::Bool   # Use mean estimate for deterministic prediction
+    rng::AbstractRNG
+end
+
+mutable struct StopGaussianPredictor <: Predictor
+    param::StopGaussianPredictorParameter
+    dto::Float64
+    ado_vel_dict::Dict{String, Vector{DiagNormal}}
+    stop::Bool
+
+    function StopGaussianPredictor(param::StopGaussianPredictorParameter,
+                               dto::Float64,
+                               ado_vel_dict::Dict{String, Vector{DiagNormal}})
+        if param.deterministic
+            @assert param.num_samples == 1 "num_samples has to be 1 for deterministic prediction!"
+        end
+        return new(param, dto, ado_vel_dict, false)
+    end
+end
+
+function sample_future_ado_positions!(predictor::StopGaussianPredictor,
+                                      ado_pos_dict::Dict{String, Vector{Float64}})
+    @assert keys(predictor.ado_vel_dict) == keys(ado_pos_dict) ||
+            collect(keys(predictor.ado_vel_dict)) == ["Any"]
+
+    outputs_dict = Dict{String, Array{Float64, 3}}();
+    if predictor.stop == false
+        for key in keys(ado_pos_dict)
+            outputs_dict[key] =
+                Array{Float64, 3}(undef, predictor.param.num_samples,
+                                predictor.param.prediction_steps, 2);
+            if collect(keys(predictor.ado_vel_dict)) == ["Any"]
+                d = predictor.ado_vel_dict["Any"][1];
+            else
+                d = predictor.ado_vel_dict[key][1];
+            end
+            if predictor.param.deterministic
+                for ii = 1:predictor.param.num_samples
+                    outputs_dict[key][ii, :, :] =
+                        Array(transpose(hcat(
+                            [d.μ for ii = 1:predictor.param.prediction_steps]...
+                        )));
+                end
+            else
+                for ii = 1:predictor.param.num_samples
+                    outputs_dict[key][ii, :, :] =
+                        Array(transpose(hcat(
+                            [rand(predictor.param.rng, d) for ii = 1:predictor.param.prediction_steps]...
+                        )));
+                end
+            end
+            outputs_dict[key] = cumsum(outputs_dict[key], dims=2).*
+                                predictor.dto;
+            outputs_dict[key][:, :, 1] .+= ado_pos_dict[key][1];
+            outputs_dict[key][:, :, 2] .+= ado_pos_dict[key][2];
+        end
+    else
+        for key in keys(ado_pos_dict)
+            outputs_dict[key] =
+                Array{Float64, 3}(undef, predictor.param.num_samples,
+                                predictor.param.prediction_steps, 2);
+            if collect(keys(predictor.ado_vel_dict)) == ["Any"]
+                d = predictor.ado_vel_dict["Any"][2];
+            else
+                d = predictor.ado_vel_dict[key][2];
+            end
+            if predictor.param.deterministic
+                for ii = 1:predictor.param.num_samples
+                    outputs_dict[key][ii, :, :] =
+                        Array(transpose(hcat(
+                            [d.μ for ii = 1:predictor.param.prediction_steps]...
+                        )));
+                end
+            else
+                for ii = 1:predictor.param.num_samples
+                    outputs_dict[key][ii, :, :] =
+                        Array(transpose(hcat(
+                            [rand(predictor.param.rng, d) for ii = 1:predictor.param.prediction_steps]...
+                        )));
+                end
+            end
+            outputs_dict[key] = cumsum(outputs_dict[key], dims=2).*
+                                predictor.dto;
+            outputs_dict[key][:, :, 1] .+= ado_pos_dict[key][1];
+            outputs_dict[key][:, :, 2] .+= ado_pos_dict[key][2];
+        end
+    end
+    return outputs_dict
+end

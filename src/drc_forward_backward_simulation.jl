@@ -51,14 +51,23 @@ function SimulationParameter(gaussian_predictor::GaussianPredictor,
                                cost_param)
 end
 
+function SimulationParameter(gaussian_predictor::StopGaussianPredictor,
+                             dtc::Float64, cost_param::DRCCostParameter)
+    dto = gaussian_predictor.dto;
+    prediction_steps = gaussian_predictor.param.prediction_steps;
+    num_samples = gaussian_predictor.param.num_samples;
+    return SimulationParameter(dtc, 0.1, dto, prediction_steps, num_samples,
+        cost_param)
+end
+
 # Simulated Cost Result
 mutable struct SimulationCostResult
     inst_cnt_cost_array_gpu::CuArray{Float32, 2} # instantaneous control costs: (num_controls, total_timesteps-1)
     inst_pos_cost_array_gpu::CuArray{Float32, 2} # instantaneous position costs: (num_controls, total_timesteps - 1)
-    inst_col_cost_array_gpu::CuArray{Float32, 3} # instantaneous collision costs: (num_samples*num_controls, total_timesteps-1, num_ado_agents)
+    # inst_col_cost_array_gpu::CuArray{Float32, 3} # instantaneous collision costs: (num_samples*num_controls, total_timesteps-1, num_ado_agents)
 
     term_pos_cost_array_gpu::CuArray{Float32, 2} # terminal position costs: (num_controls, 1)
-    term_col_cost_array_gpu::CuArray{Float32, 3} # terminal collision costs: (num_samples*num_controls, 1, num_ado_agents)
+    # term_col_cost_array_gpu::CuArray{Float32, 3} # terminal collision costs: (num_samples*num_controls, 1, num_ado_agents)
 end
 
 # Simulated Cost Gradient Result
@@ -265,40 +274,36 @@ end
 # # Compute costs based on the forward simulation & predicted ado positions
 function compute_costs(ex_array_gpu::CuArray{Float32, 3},
                        u_array_gpu::CuArray{Float32, 3},
-                       ap_array_gpu::CuArray{Float32, 4},
-                       time_idx_ap_array_gpu::CuArray{Int32, 1},
-                       control_idx_ex_array_gpu::CuArray{Int32, 1},
                        target_pos_array_gpu::CuArray{Float32, 2},
                        cost_param::DRCCostParameter)
     if name(CuDevice(0)) == "NVIDIA GeForce RTX 3060"
         # Instataneous costs
         inst_cnt_cost_array_gpu = instant_control_cost(u_array_gpu, cost_param, threads=(16, 64));
         inst_pos_cost_array_gpu = instant_position_cost(ex_array_gpu, target_pos_array_gpu, cost_param, threads=(16, 64));
-        inst_col_cost_array_gpu = instant_collision_cost(ex_array_gpu, ap_array_gpu,
-                                                         time_idx_ap_array_gpu, control_idx_ex_array_gpu,
-                                                         cost_param, threads=(64, 4, 4));
+        # inst_col_cost_array_gpu = instant_collision_cost(ex_array_gpu, ap_array_gpu,
+        #                                                  time_idx_ap_array_gpu, control_idx_ex_array_gpu,
+        #                                                  cost_param, threads=(64, 4, 4));
         # Terminal costs
         term_pos_cost_array_gpu = terminal_position_cost(ex_array_gpu, target_pos_array_gpu, cost_param, threads=(1024, 1));
-        term_col_cost_array_gpu = terminal_collision_cost(ex_array_gpu, ap_array_gpu,
-                                                          time_idx_ap_array_gpu, control_idx_ex_array_gpu,
-                                                          cost_param, threads=(128, 1, 8));
+        # term_col_cost_array_gpu = terminal_collision_cost(ex_array_gpu, ap_array_gpu,
+        #                                                   time_idx_ap_array_gpu, control_idx_ex_array_gpu,
+        #                                                   cost_param, threads=(128, 1, 8));
     else
         # Instataneous costs
         inst_cnt_cost_array_gpu = instant_control_cost(u_array_gpu, cost_param);
         inst_pos_cost_array_gpu = instant_position_cost(ex_array_gpu, target_pos_array_gpu, cost_param);
-        inst_col_cost_array_gpu = instant_collision_cost(ex_array_gpu, ap_array_gpu,
-                                                         time_idx_ap_array_gpu, control_idx_ex_array_gpu,
-                                                         cost_param);
+        # inst_col_cost_array_gpu = instant_collision_cost(ex_array_gpu, ap_array_gpu,
+        #                                                  time_idx_ap_array_gpu, control_idx_ex_array_gpu,
+        #                                                  cost_param);
         # Terminal costs
         term_pos_cost_array_gpu = terminal_position_cost(ex_array_gpu, target_pos_array_gpu, cost_param);
-        term_col_cost_array_gpu = terminal_collision_cost(ex_array_gpu, ap_array_gpu,
-                                                          time_idx_ap_array_gpu, control_idx_ex_array_gpu,
-                                                          cost_param);
+        # term_col_cost_array_gpu = terminal_collision_cost(ex_array_gpu, ap_array_gpu,
+        #                                                   time_idx_ap_array_gpu, control_idx_ex_array_gpu,
+        #                                                   cost_param);
     end
 
     return SimulationCostResult(inst_cnt_cost_array_gpu, inst_pos_cost_array_gpu,
-                                inst_col_cost_array_gpu, term_pos_cost_array_gpu,
-                                term_col_cost_array_gpu)
+                                term_pos_cost_array_gpu)
 end
 
 # # Integrate all the costs over horizon, returning sampled total costs and the risk value
@@ -319,7 +324,7 @@ function integrate_costs(cost_result::SimulationCostResult,
     if isnothing(constraint_time)
         pos_cost_per_control += cost_result.term_pos_cost_array_gpu;
     end
-
+    """
     # for collision cost, sum over all timesteps and ado agents but not over samples
     col_cost_per_sample_control = sum(cost_result.inst_col_cost_array_gpu[:, 1:c_idx, :], dims=(2, 3)).*Float32(sim_param.dtc);
     if isnothing(constraint_time)
@@ -330,9 +335,9 @@ function integrate_costs(cost_result::SimulationCostResult,
                                               [2, 1]);
     @assert isa(col_cost_per_control_sample, CuArray{Float32, 2});
     num_controls = size(col_cost_per_control_sample, 1);
-
+    """
     # (num_controls, num_samples) array of Float64
-    total_cost_per_control_sample = Float64.(collect(col_cost_per_control_sample .+ (cnt_cost_per_control + pos_cost_per_control)));
+    total_cost_per_control_sample = Float64.(collect(cnt_cost_per_control + pos_cost_per_control));
 
     # compute risk value per control
     risk_per_control = Vector{Float64}(undef, num_controls);
@@ -340,7 +345,8 @@ function integrate_costs(cost_result::SimulationCostResult,
         risk_value = sum(total_cost_per_control_sample[ii, :])./sim_param.num_samples
         @inbounds risk_per_control[ii] = risk_value
     end
-    return total_cost_per_control_sample, risk_per_control
+
+    return risk_per_control
 end
 
 # Choose best nominal control (i.e. with lowest risk value) for backward simulation

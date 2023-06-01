@@ -211,3 +211,32 @@ function fetch_ado_positions!(loader::ShiftedSyntheticSceneLoader,
     end
     return deepcopy(loader.ado_pos_dict)
 end
+
+# Synthetic Scene Loader
+struct StopSyntheticSceneParameter <: Parameter
+    rng::AbstractRNG
+end
+
+mutable struct StopSyntheticSceneLoader <: SceneLoader
+    param::StopSyntheticSceneParameter
+    ado_pos_dict::Dict{String, Vector{Float64}}
+    stop::Bool
+end
+
+function fetch_ado_positions!(loader::StopSyntheticSceneLoader,
+                              prediction_dict::Dict{String, Array{Float64, 3}})
+    @assert keys(loader.ado_pos_dict) == keys(prediction_dict)
+    if loader.stop == false
+        for key in keys(prediction_dict)
+            # sample next position independently per ado agent from prediction_dict
+            num_samples = size(prediction_dict[key], 1);
+            sample_idx = rand(loader.param.rng, 1:num_samples)
+            loader.ado_pos_dict[key] = prediction_dict[key][sample_idx, 1, :];
+        end
+    else
+        for key in keys(prediction_dict)
+            loader.ado_pos_dict[key] = loader.ado_pos_dict[key];
+        end
+    end
+    return deepcopy(loader.ado_pos_dict)
+end
