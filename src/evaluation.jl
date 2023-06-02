@@ -83,7 +83,7 @@ function evaluate(scene_loader::SceneLoader,
                   ado_inputs_init::Union{Nothing, Dict{T, Vector{Float64}} where T <: Union{PyObject, String}}=nothing, # only needed for CrowdNavController
                   nominal_control::Union{Nothing, Bool}=nothing, # determines if nominal control is used in RSSAC controller
                   ado_id_removed::Union{Nothing, String}=nothing, # determines if ado_id_removed is removed from scenes with TrajectronSceneLoader
-                  predictor::Union{Nothing, GaussianPredictor}=nothing) # needs to feed in GaussianPredictor if BICController is used with SyntheticSceneLoader
+                  predictor::Union{Nothing, GaussianPredictor, StopGaussianPredictor}=nothing) # needs to feed in GaussianPredictor if BICController is used with SyntheticSceneLoader
     # Assertions
     if typeof(controller) == BICController
         @assert isnothing(nominal_control)
@@ -168,7 +168,13 @@ function evaluate(scene_loader::SceneLoader,
                     delete!(ado_positions, key_to_remove)
                     delete!(ado_inputs, key_to_remove)
                 end
-            elseif typeof(scene_loader) == SyntheticSceneLoader || typeof(scene_loader) == ShiftedSyntheticSceneLoader
+            elseif typeof(scene_loader) == SyntheticSceneLoader || typeof(scene_loader) == ShiftedSyntheticSceneLoader ||
+                        typeof(scene_loader) == StopSyntheticSceneLoader
+                if typeof(scene_loader) == StopSyntheticSceneLoader && m_time_idx == 10
+                    # controller.predictor.stop = true;
+                    scene_loader.stop = true;
+                    @warn "Pedestrian stopped"
+                end
                 if typeof(controller) == RSSACController
                     ado_positions = fetch_ado_positions!(scene_loader, controller.prediction_dict);
                 else

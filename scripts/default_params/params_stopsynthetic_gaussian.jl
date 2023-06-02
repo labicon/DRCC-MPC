@@ -16,7 +16,6 @@ ado_pos_init_dict = Dict("PEDESTRIAN/1" => [0.0, -5.0],
                             "PEDESTRIAN/8" => [-5.0, -3.0],
                             "PEDESTRIAN/9" => [5.0, 5.0],
                             "PEDESTRIAN/10" => [-5.0, -5.0]);                            # initial ado positions [x, y] [m]
-                            
 ado_vel_dict = Dict("PEDESTRIAN/1" => [MvNormal([0.0, 1.0], Diagonal([0.1, 0.15])), MvNormal([0.0, 0.0], Diagonal([0.15, 0.15]))],
                             "PEDESTRIAN/2" => [MvNormal([0.0, 1.0], Diagonal([0.1, 0.15])), MvNormal([0.0, 0.0], Diagonal([0.15, 0.15]))],
                             "PEDESTRIAN/3" => [MvNormal([1.0, 0.0], Diagonal([0.15, 0.1])), MvNormal([0.0, 0.0], Diagonal([0.15, 0.15]))],
@@ -33,9 +32,9 @@ prediction_rng_seed = 1;                                                        
 deterministic = false;                                                              # if true, a single, deterministic sample is drawn regardless of random seed. (num_samples = 1 is needed)
 num_samples = 30;                                                                   # number of trajectory samples (per ado agent)
 # Cost Parameters
-include("params_drc_cost.jl")
+include("params_cost.jl")
 # Control Parameters
-include("params_drc_control.jl")
+include("params_control.jl")
 # Ego initial state
 ego_pos_init_vec = [-5., 0.];                                                       # initial ego position [x, y] [m]
 ego_pos_goal_vec = [5., 0.];                                                        # goal ego position [x, y] [m]

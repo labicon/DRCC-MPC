@@ -50,6 +50,15 @@ function SimulationParameter(gaussian_predictor::GaussianPredictor,
                                cost_param)
 end
 
+function SimulationParameter(gaussian_predictor::StopGaussianPredictor,
+                             dtc::Float64, cost_param::CostParameter)
+    dto = gaussian_predictor.dto;
+    prediction_steps = gaussian_predictor.param.prediction_steps;
+    num_samples = gaussian_predictor.param.num_samples;
+    return SimulationParameter(dtc, dto, prediction_steps, num_samples,
+        cost_param)
+end
+
 # Simulated Cost Result
 mutable struct SimulationCostResult
     inst_cnt_cost_array_gpu::CuArray{Float32, 2} # instantaneous control costs: (num_controls, total_timesteps-1)

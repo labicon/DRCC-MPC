@@ -235,7 +235,7 @@ function fetch_ado_positions!(loader::StopSyntheticSceneLoader,
         end
     else
         for key in keys(prediction_dict)
-            loader.ado_pos_dict[key] = loader.ado_pos_dict[key];
+            loader.ado_pos_dict[key] = loader.ado_pos_dict[key] + rand(loader.param.rng, MvNormal([0.0, 0.0], Diagonal([0.1, 0.1]))).*0.4;
         end
     end
     return deepcopy(loader.ado_pos_dict)

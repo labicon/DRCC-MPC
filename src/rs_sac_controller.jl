@@ -240,7 +240,7 @@ function schedule_prediction!(controller::RSSACController,
             end
             # GC.gc();
         end
-    elseif typeof(controller.predictor) == GaussianPredictor
+    elseif typeof(controller.predictor) == GaussianPredictor || typeof(controller.predictor) == StopGaussianPredictor
         controller.prediction_task = @task begin
             controller.prediction_dict_tmp =
                 sample_future_ado_positions!(controller.predictor,
