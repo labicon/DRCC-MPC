@@ -331,6 +331,8 @@ export
     compute_cost_CvaR,
     compute_cost,
     compute_CVaR,
+    compute_CVaR_array,
+    compute_CVaR_array_gpu,
     get_robot_present_and_future,
     DRCControlParameter
 include("distributionally_robust_controller.jl")

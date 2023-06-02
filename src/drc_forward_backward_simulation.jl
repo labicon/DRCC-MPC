@@ -336,6 +336,7 @@ function integrate_costs(cost_result::SimulationCostResult,
     @assert isa(col_cost_per_control_sample, CuArray{Float32, 2});
     num_controls = size(col_cost_per_control_sample, 1);
     """
+    num_controls = size(cnt_cost_per_control, 1);
     # (num_controls, num_samples) array of Float64
     total_cost_per_control_sample = Float64.(collect(cnt_cost_per_control + pos_cost_per_control));
 
