@@ -130,11 +130,12 @@ function simulate_forward(e_init::RobotState,
                           u_array_gpu::CuArray{Float32, 3}, # multiple nominal control version
                           sim_param::SimulationParameter)
     # ex_init: 4-length vector of initial ego state.
-    # u_array_gpu: (num_controls, total_timesteps-1, 2) array of acceleration inputs
-    out_vel = similar(u_array_gpu)
+    # u_array_gpu: (num_controls, total_timesteps-1, 2) array of velocity inputs
+    # out_vel = similar(u_array_gpu)
     dtc = Float32(sim_param.dtc);
     # compute velocity (Euler integration)
-    CUDA.accumulate!(+, out_vel, u_array_gpu.*sim_param.dtc, dims=2);
+    # CUDA.accumulate!(+, out_vel, u_array_gpu.*sim_param.dtc, dims=2);
+    out_vel = u_array_gpu;
     out_vel = cat(out_vel, cu(zeros(size(u_array_gpu, 1), 1, 2)), dims=2);
     # ev_init = get_velocity(e_init);
     # out_vel[:, :, 1] .+= Float32(ev_init[1]);
