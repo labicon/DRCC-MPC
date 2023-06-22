@@ -333,6 +333,7 @@ export
     compute_CVaR,
     compute_CVaR_array,
     compute_CVaR_array_gpu,
+    kernel_CVaR!,
     get_robot_present_and_future,
     DRCControlParameter
 include("distributionally_robust_controller.jl")

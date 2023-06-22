@@ -135,10 +135,10 @@ function simulate_forward(e_init::RobotState,
     dtc = Float32(sim_param.dtc);
     # compute velocity (Euler integration)
     CUDA.accumulate!(+, out_vel, u_array_gpu.*sim_param.dtc, dims=2);
-    out_vel = cat(cu(zeros(size(u_array_gpu, 1), 1, 2)), out_vel, dims=2);
-    ev_init = get_velocity(e_init);
-    out_vel[:, :, 1] .+= Float32(ev_init[1]);
-    out_vel[:, :, 2] .+= Float32(ev_init[2]);
+    out_vel = cat(out_vel, cu(zeros(size(u_array_gpu, 1), 1, 2)), dims=2);
+    # ev_init = get_velocity(e_init);
+    # out_vel[:, :, 1] .+= Float32(ev_init[1]);
+    # out_vel[:, :, 2] .+= Float32(ev_init[2]);
 
     # compute position (Euler integration)
     out_pos = similar(u_array_gpu)
@@ -316,14 +316,17 @@ function integrate_costs(cost_result::SimulationCostResult,
     else
         c_idx = size(cost_result.inst_cnt_cost_array_gpu, 2);
     end
+    discount_factor = cumprod(0.9*ones(c_idx));
     # control cost
-    cnt_cost_per_control = sum(cost_result.inst_cnt_cost_array_gpu[:, 1:c_idx], dims=2).*Float32(sim_param.dtc);
+    cnt_cost_array = Float64.(collect(cost_result.inst_cnt_cost_array_gpu[:, 1:c_idx]));
+    cnt_cost_per_control = cnt_cost_array*discount_factor .* sim_param.dtc;
 
     # position cost
-    pos_cost_per_control = sum(cost_result.inst_pos_cost_array_gpu[:, 1:c_idx], dims=2).*Float32(sim_param.dtc);
-    if isnothing(constraint_time)
-        pos_cost_per_control += cost_result.term_pos_cost_array_gpu;
-    end
+    pos_cost_array = Float64.(collect(cost_result.inst_pos_cost_array_gpu[:, 1:c_idx]));
+    pos_cost_per_control = pos_cost_array * discount_factor .* sim_param.dtc;
+    # if isnothing(constraint_time)
+    #     pos_cost_per_control += Float64.(collect(cost_result.term_pos_cost_array_gpu));
+    # end
     """
     # for collision cost, sum over all timesteps and ado agents but not over samples
     col_cost_per_sample_control = sum(cost_result.inst_col_cost_array_gpu[:, 1:c_idx, :], dims=(2, 3)).*Float32(sim_param.dtc);
@@ -336,18 +339,18 @@ function integrate_costs(cost_result::SimulationCostResult,
     @assert isa(col_cost_per_control_sample, CuArray{Float32, 2});
     num_controls = size(col_cost_per_control_sample, 1);
     """
-    num_controls = size(cnt_cost_per_control, 1);
+    # num_controls = size(cnt_cost_per_control, 1);
     # (num_controls, num_samples) array of Float64
-    total_cost_per_control_sample = Float64.(collect(cnt_cost_per_control + pos_cost_per_control));
+    total_cost_per_control_sample = cnt_cost_per_control + pos_cost_per_control;
 
-    # compute risk value per control
-    risk_per_control = Vector{Float64}(undef, num_controls);
-    for ii = 1:num_controls
-        risk_value = sum(total_cost_per_control_sample[ii, :])./sim_param.num_samples
-        @inbounds risk_per_control[ii] = risk_value
-    end
+    # # compute risk value per control
+    # risk_per_control = Vector{Float64}(undef, num_controls);
+    # for ii = 1:num_controls
+    #     risk_value = sum(total_cost_per_control_sample[ii, :])./sim_param.num_samples
+    #     @inbounds risk_per_control[ii] = risk_value
+    # end
 
-    return risk_per_control
+    return total_cost_per_control_sample
 end
 
 # Choose best nominal control (i.e. with lowest risk value) for backward simulation

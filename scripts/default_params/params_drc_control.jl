@@ -1,7 +1,7 @@
 dtc = 0.1;                                                                         # Euler integration time interval [s]
 dtr = 0.1;                                                                          # replanning time interval [s]
 tcalc = 0.1;                                                                        # pre-allocated control computation time [s] (< dtr)
-u_norm_max = 5.0;                                                                   # maximum control norm [m/s^2]
+u_norm_max = 2.0;                                                                   # maximum control norm [m/s^2]
 constraint_time = nothing
 
 horizon = 40;

@@ -412,7 +412,7 @@ end
 =#
 
 function visualize!(color_dict::Dict, w::WorldState,
-                    # target_trajectory::Trajectory2D,
+                    target_trajectory::Trajectory2D,
                     outputs_dict::Dict{String, Array{Float64, 3}},
                     num_samples::Int64,
                     #nominal_control_idx::Int64,
@@ -445,7 +445,7 @@ function visualize!(color_dict::Dict, w::WorldState,
               color=color_dict[robot_key], label="Velocity", arrow=:arrow,
               alpha=0.5)
     end
-    goal_pos = [5., 8.9] .+ [-5.263534, -5.314636];
+    goal_pos = collect(values(target_trajectory))[end];
     scatter!((goal_pos[1], goal_pos[2]), color=color_dict[robot_key],
              label="Ego Goal",
              markershape=:star5,
@@ -529,7 +529,7 @@ function make_gif(result::DRCEvaluationResult;
                 nominal_trajectory = nothing
             end
             plt = visualize!(color_dict, w,
-                             #result.target_trajectory_history[ii],
+                             result.target_trajectory_history[ii],
                              prediction_dict,
                              result.sim_param.num_samples,
                              # u_nominal_idx,

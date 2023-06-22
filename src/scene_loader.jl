@@ -37,12 +37,12 @@ function TrajectronSceneLoader(param::TrajectronSceneParameter;
    # will be returned by fetch_ado_positions!. You'll have
    # to manually delete the ado agent from the outputs_dict.
 
-    @assert in(param.test_data_name, ["eth", "hotel", "univ"] .* "_test.pkl");
+    @assert in(param.test_data_name, ["eth", "hotel", "univ", "synthetic_eth", "noised_eth", "multimodal_noised_eth"] .* "_test.pkl");
     file_dir = @__DIR__;
     model_dir = normpath(joinpath(file_dir, "..",
                                   "Trajectron-plus-plus", "experiments", "pedestrians",
                                   "models"));
-    if param.test_data_name == "eth_test.pkl"
+    if in(param.test_data_name, ["eth_test.pkl", "synthetic_eth_test.pkl", "noised_eth_test.pkl", "multimodal_noised_eth_test.pkl"])
         if param.incl_robot_node
             model_dir = joinpath(model_dir, "models_21_Apr_2020_20_15_41_eth_ar3_rob");
         else
