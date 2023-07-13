@@ -17,26 +17,26 @@ function transition(e_state::RobotState,
 end
 
 function transition_jacobian(ex_vec::Vector{Float64},
-                             u::Vector{Float64})
+                            u::Vector{Float64})
     @assert length(ex_vec) == 4 "Invalid robot state dimension!"
     @assert length(u) == 2 "Invalid control input dimension!"
-    A = [0.0 0.0 0.0 0.0;
-         0.0 0.0 0.0 0.0;
-         0.0 0.0 0.0 0.0;
-         0.0 0.0 0.0 0.0];
+    A = [0.0 0.0 1.0 0.0;
+    0.0 0.0 0.0 1.0;
+    0.0 0.0 0.0 0.0;
+    0.0 0.0 0.0 0.0];
     return A
 end
 
 function transition_jacobian(e_state::RobotState,
-                             u::Vector{Float64})
+                            u::Vector{Float64})
     return transition_jacobian(e_state.x, u)
 end
 
 function transition_control_coeff(e_state::RobotState)
-    H = [1.0 0.0;
-         0.0 1.0;
-         0.0 0.0;
-         0.0 0.0];
+    H = [0.0 0.0;
+    0.0 0.0;
+    1.0 0.0;
+    0.0 1.0];
     return H
 end
 
@@ -48,4 +48,21 @@ function transition(e_state::RobotState,
     x_new[3] = u[1]
     x_new[4] = u[2]
     return RobotState(x_new, e_state.t + Duration(dt))
+end
+
+########## Unicycle model ##########
+# Instantaneous Transition.
+function transition(e_state::UnicycleState,
+                    u::Vector{Float64})
+    @assert length(u) == 2 "Invalid control input dimension!"
+    return [u[1]*cos(e_state.x[3]); u[1]*sin(e_state.x[3]); u[2]; 0.0; 0.0]
+end
+
+function transition(e_state::UnicycleState,
+                    u::Vector{Float64},
+                    dt::Real)
+    x_new = e_state.x + transition(e_state, u)*dt;
+    x_new[4] = u[1]*cos(e_state.x[3])
+    x_new[5] = u[1]*sin(e_state.x[3])
+    return UnicycleState(x_new, e_state.t + Duration(dt))
 end

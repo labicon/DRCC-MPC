@@ -31,7 +31,7 @@ function convert_to_schedule(t_init::Time, u_nominal::Vector{Float64},
 end
 
 # compute nominal trajectory
-@inline function get_nominal_trajectory(e_init::RobotState,
+@inline function get_nominal_trajectory(e_init::Union{RobotState, UnicycleState},
                                 e_pos_goal_vec::Vector{Float64},
                                 target_speed::Float64,
                                 sim_horizon::Float64,
@@ -62,11 +62,15 @@ function init_condition_setup(;# Ego Initial Conditions
     # Initial condition setup
     if isnothing(ego_vel_init_vec)
         # @assert !isnothing(target_speed)
-        ego_vel_init_vec = (ego_pos_goal_vec - ego_pos_init_vec)./
-                           norm(ego_pos_goal_vec - ego_pos_init_vec);
+        ego_vel_init_vec = (ego_pos_goal_vec - ego_pos_init_vec[1:2])./
+                           norm(ego_pos_goal_vec - ego_pos_init_vec[1:2]);
     end
     ego_state_init_vec = vcat(ego_pos_init_vec, ego_vel_init_vec);
-    e_init = RobotState(ego_state_init_vec, t_init);
+    if length(ego_state_init_vec) == 4
+        e_init = RobotState(ego_state_init_vec, t_init);
+    elseif length(ego_state_init_vec) == 5
+        e_init = UnicycleState(ego_state_init_vec, t_init);
+    end
     w_init = WorldState(e_init, ado_positions, t_init);
 
     # Measurement schedule setup

@@ -125,6 +125,19 @@ function simulate_forward(e_init::RobotState,
     end
     return e_state_array
 end
+# # Forward Simulation
+function simulate_forward_unicycle(e_init::RobotState,
+                            u_array::Vector{Vector{Float64}},
+                            sim_param::SimulationParameter)
+    e_state_array = Vector{RobotState}(undef, length(u_array) + 1);
+    e_state_array[1] = e_init;
+    for ii in eachindex(u_array)
+        @inbounds e_state_array[ii + 1] = transition(e_state_array[ii],
+                                    u_array[ii],
+                                    sim_param.dtc)
+    end
+    return e_state_array
+end
 # # Forward Simulation (CUDA version)
 function simulate_forward(e_init::RobotState,
                           u_array_gpu::CuArray{Float32, 3}, # multiple nominal control version
@@ -152,7 +165,36 @@ function simulate_forward(e_init::RobotState,
     # (num_controls, total_timesteps, 4) array
     return cat(out_pos, out_vel, dims=3)
 end
+# # Forward Simulation (CUDA version)
+function simulate_forward_unicycle(e_init::RobotState,
+                                    u_array_gpu::CuArray{Float32, 3}, # multiple nominal control version
+                                    sim_param::SimulationParameter)
+    # ex_init: 5-length vector of initial ego state.
+    # u_array_gpu: (num_controls, total_timesteps-1, 2) array of velocity inputs
+    dtc = Float32(sim_param.dtc);
+    # compute velocity (Euler integration)
+    out_vel = CuArray{Float32, 3}(undef, size(u_array_gpu, 1), size(u_array_gpu, 2) + 1, 2);
+    out_pos = CuArray{Float32, 3}(undef, size(u_array_gpu, 1), size(u_array_gpu, 2) + 1, 3);
 
+    # compute position (Euler integration)
+    out_pos = similar(u_array_gpu)
+    CUDA.accumulate!(+, out_pos, out_vel[:, 1:end-1, :].*dtc, dims=2);
+    out_pos = cat(cu(zeros(size(u_array_gpu, 1), 1, 2)), out_pos, dims=2);
+    ep_init = get_state(e_init);
+    out_pos[:, :, 1] .= Float32(ep_init[1]);
+    out_pos[:, :, 2] .= Float32(ep_init[2]);
+    out_pos[:, :, 3] .= Float32(ep_init[3]);
+    for timestep in size(u_array_gpu, 2)
+        out_vel[:, timestep, 1] .= u_array_gpu[:, timestep, 1] .* cos(out_pos[:, timestep, 3]);
+        out_vel[:, timestep, 2] .= u_array_gpu[:, timestep, 1] .* sin(out_pos[:, timestep, 3]);
+        out_pos[:, timestep + 1, 1] .= out_pos[:, timestep, 1] .+ out_vel[:, timestep, 1].*dtc;
+        out_pos[:, timestep + 1, 2] .= out_pos[:, timestep, 2] .+ out_vel[:, timestep, 2].*dtc;
+        out_pos[:, timestep + 1, 3] .= out_pos[:, timestep, 3] .+ u_array_gpu[:, timestep, 2].*dtc;
+    end
+
+    # (num_controls, total_timesteps, 5) array
+    return cat(out_pos, out_vel, dims=3)
+end
 # # Measurement Schedule Handler
 function get_measurement_schedule(w_init::WorldState, horizon::Float64,
                                   sim_param::SimulationParameter)
@@ -354,96 +396,6 @@ function integrate_costs(cost_result::SimulationCostResult,
     return total_cost_per_control_sample
 end
 
-# Choose best nominal control (i.e. with lowest risk value) for backward simulation
-function choose_best_nominal_control(total_cost_per_control_sample, risk_per_control, u_array_gpu)
-    minimum_risk, best_control_idx = findmin(risk_per_control);
-    sampled_total_costs = total_cost_per_control_sample[best_control_idx, :];
-
-    best_u_array_tmp = Float64.(collect(u_array_gpu[best_control_idx, :, :]));
-    best_u_array = [best_u_array_tmp[ii, :] for ii = 1:size(best_u_array_tmp, 1)];
-
-    return sampled_total_costs, minimum_risk, best_control_idx, best_u_array
-end
-
-# # Compute cost gradients based on the forward simulation & predicted ado positions
-function compute_cost_gradients(best_ex_array_gpu::CuArray{Float32, 2},
-                                best_u_array_gpu::CuArray{Float32, 2},
-                                best_ap_array_gpu::CuArray{Float32, 4},
-                                time_idx_ap_array_gpu::CuArray{Int32, 1},
-                                target_pos_array_gpu::CuArray{Float32, 2},
-                                cost_param::DRCCostParameter)
-    if name(CuDevice(0)) == "NVIDIA GeForce RTX 3060"
-        # Instantaneous costs
-        inst_pos_cost_grad_array_gpu = instant_position_cost_gradient(best_ex_array_gpu, target_pos_array_gpu,
-                                                                      cost_param, threads=256);
-        inst_col_cost_grad_array_gpu = instant_collision_cost_gradient(best_ex_array_gpu, best_ap_array_gpu,
-                                                                       time_idx_ap_array_gpu, cost_param,
-                                                                       threads=(64, 4, 4));
-
-        # Terminal costs
-        term_pos_cost_grad_array_gpu = terminal_position_cost_gradient(best_ex_array_gpu, target_pos_array_gpu,
-                                                                       cost_param);
-        term_col_cost_grad_array_gpu = terminal_collision_cost_gradient(best_ex_array_gpu, best_ap_array_gpu,
-                                                                        time_idx_ap_array_gpu, cost_param, threads=(128, 1, 8));
-    else
-        # Instantaneous costs
-        inst_pos_cost_grad_array_gpu = instant_position_cost_gradient(best_ex_array_gpu, target_pos_array_gpu,
-                                                                      cost_param);
-        inst_col_cost_grad_array_gpu = instant_collision_cost_gradient(best_ex_array_gpu, best_ap_array_gpu,
-                                                                       time_idx_ap_array_gpu, cost_param);
-
-        # Terminal costs
-        term_pos_cost_grad_array_gpu = terminal_position_cost_gradient(best_ex_array_gpu, target_pos_array_gpu,
-                                                                       cost_param);
-        term_col_cost_grad_array_gpu = terminal_collision_cost_gradient(best_ex_array_gpu, best_ap_array_gpu,
-                                                                        time_idx_ap_array_gpu, cost_param);
-    end
-    return SimulationCostGradResult(inst_pos_cost_grad_array_gpu, inst_col_cost_grad_array_gpu,
-                                    term_pos_cost_grad_array_gpu, term_col_cost_grad_array_gpu)
-end
-
-# # sum cost gradients per timestep and sample, reshaping them to (4, total_timesteps, num_samples) array
-function sum_cost_gradients(cost_grad_result::SimulationCostGradResult)
-    num_samples = size(cost_grad_result.inst_col_cost_grad_array_gpu, 1);
-    total_timesteps = size(cost_grad_result.inst_col_cost_grad_array_gpu, 2) + 1;
-
-    cost_grad_array = Array{Float64, 3}(undef, 4, total_timesteps, num_samples);
-
-    # sum over all ado agents
-    inst_col_cost_grads_gpu = sum(cost_grad_result.inst_col_cost_grad_array_gpu, dims=3); # (num_samples, total_timesteps-1, 1, 4)
-    term_col_cost_grads_gpu = sum(cost_grad_result.term_col_cost_grad_array_gpu, dims=3); # (num_samples, 1, 1, 4)
-
-    cost_grad_array[:, 1:end-1, :] = collect(dropdims(permutedims(inst_col_cost_grads_gpu, [4, 3, 2, 1]), dims=2)); # (4, total_timesteps-1, num_samples)
-    cost_grad_array[:, 1:end-1, :] .+= collect(permutedims(cost_grad_result.inst_pos_cost_grad_array_gpu, [2, 1])); # (4, total_timesteps-1, num_samples)
-    cost_grad_array[:, end:end, :] = collect(dropdims(permutedims(term_col_cost_grads_gpu, [4, 3, 2, 1]), dims=2)); # (4, 1, num_samples)
-    cost_grad_array[:, end:end, :] .+= collect(permutedims(cost_grad_result.term_pos_cost_grad_array_gpu, [2, 1])); # (4, 1, num_samples)
-
-    return cost_grad_array
-end
-
-# # backward simulation of the costates.
-function simulate_backward(best_ex_array::Array{Float64, 2}, # (total_timesteps, 4) array
-                           best_u_array::Vector{Vector{Float64}},
-                           cost_grad_array::Array{Float64, 3},
-                           sim_param::SimulationParameter)
-    e_costate_array = similar(cost_grad_array); # (4, total_timesteps, num_samples) array
-    # boundary conditions
-    e_costate_array[:, end, :] = cost_grad_array[:, end, :];
-
-    for jj = Iterators.reverse(1:size(e_costate_array, 2) - 1)
-        # backward euler integration
-        @inbounds Jacobian =
-            transition_jacobian(best_ex_array[jj + 1, :],
-                                best_u_array[jj]) # Note the index jj here
-        @inbounds costate_vel =
-            -cost_grad_array[:, jj, :] .- # Note the index jj here
-            transpose(Jacobian)*e_costate_array[:, jj + 1, :];
-        @inbounds e_costate_array[:, jj, :] =
-            e_costate_array[:, jj + 1, :] .+
-            costate_vel*(-sim_param.dtc);
-    end
-    return e_costate_array
-end
 
 # Main Simulation Function (forward-backward simulation)
 # Ado positions and predictions must be updated separately.

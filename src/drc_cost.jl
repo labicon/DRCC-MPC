@@ -16,7 +16,7 @@ end
 
 # Instantaneous Cost
 # # Position
-function instant_position_cost(e_state::RobotState,
+function instant_position_cost(e_state::Union{RobotState, UnicycleState},
                                 param::DRCCostParameter)
     ep_target = param.ep_target
     position_error = get_position(e_state) - ep_target;
@@ -24,7 +24,7 @@ function instant_position_cost(e_state::RobotState,
     return position_cost
 end
 
-function instant_position_cost(e_state::RobotState,
+function instant_position_cost(e_state::Union{RobotState, UnicycleState},
                                 target_trajectory::Trajectory2D,
                                 param::DRCCostParameter)
     ep_target = get_position(target_trajectory, e_state.t);
@@ -42,7 +42,7 @@ function instant_control_cost(u::Vector{Float64},
 end
 
 # # Collision
-function instant_collision_cost(e_state::RobotState,
+function instant_collision_cost(e_state::Union{RobotState, UnicycleState},
                                 apvec::Vector{Float64},
                                 param::DRCCostParameter)
     @assert length(apvec) == 2 "Invalid ado state dimension!"
@@ -53,7 +53,7 @@ function instant_collision_cost(e_state::RobotState,
 end
 
 # # Check Collision
-function check_collision(e_state::RobotState,
+function check_collision(e_state::Union{RobotState, UnicycleState},
                             apvec::Vector{Float64},
                             param::DRCCostParameter)
     @assert length(apvec) == 2 "Invalid ado state dimension!"
@@ -67,10 +67,10 @@ end
 
 # Terminal Cost
 # # Position
-terminal_position_cost(e_state::RobotState, param::DRCCostParameter) =
+terminal_position_cost(e_state::Union{RobotState, UnicycleState}, param::DRCCostParameter) =
     param.β_pos*instant_position_cost(e_state, param);
 
 # # Collision
-terminal_collision_cost(e_state::RobotState, apvec::Vector{Float64},
+terminal_collision_cost(e_state::Union{RobotState, UnicycleState}, apvec::Vector{Float64},
                             param::DRCCostParameter) =
     param.β_col*instant_collision_cost(e_state, apvec, param)

@@ -82,13 +82,40 @@ end
 get_position(e::RobotState) = e.x[1:2];
 get_velocity(e::RobotState) = e.x[3:4];
 
+# # Ego Robot State in simulate_forward_unicycle
+struct UnicycleState <: State
+    x::Vector{Float64} # [pos_x, pos_y, theta, vel_x. vel_y]
+    t::Time
+    function UnicycleState(x::Vector{Float64}, t::Time)
+        @assert length(x) == 5 "Invalid ego state dimension!"
+        return new(x, t)
+    end
+end
+
+UnicycleState(x::Vector{Float64}) = UnicycleState(x, Time());
+
+function isequal(e1::UnicycleState, e2::UnicycleState)
+    return e1.x == e2.x && e1.t == e2.t
+end
+
+==(e1::UnicycleState, e2::UnicycleState) = isequal(e1, e2)
+
+function isapprox(e1::UnicycleState, e2::UnicycleState; kwargs...)
+    return isapprox(e1.x, e2.x; kwargs...) && e1.t == e2.t
+end
+
+get_position(e::UnicycleState) = e.x[1:2];
+get_state(e::UnicycleState) = e.x[1:3];
+get_velocity(e::UnicycleState) = e.x[4:5];
+
+
 # Joint State
 mutable struct WorldState <: State
-    e_state::RobotState
+    e_state::Union{RobotState, UnicycleState}
     ap_dict::Dict{String, Vector{Float64}}
     t::Time
     t_last_m::Union{Time, Nothing}
-    function WorldState(e_state::RobotState,
+    function WorldState(e_state::Union{RobotState, UnicycleState},
                         ap_dict::Dict{String, Vector{Float64}},
                         t::Time, t_last_m::Union{Time, Nothing})
         @assert all(length.(values(ap_dict)) .== 2) "Invalid ado state dimension!"
@@ -100,7 +127,7 @@ mutable struct WorldState <: State
     end
 end
 
-function WorldState(e_state::RobotState,
+function WorldState(e_state::Union{RobotState, UnicycleState},
                     ap_dict::Dict{String, Vector{Float64}},
                     t_last_m=nothing)
     return WorldState(e_state, ap_dict, e_state.t, t_last_m)
@@ -109,8 +136,16 @@ end
 function WorldState(x::Vector{Float64},
                     ap_dict::Dict{String, Vector{Float64}},
                     t::Time=Time(), t_last_m=nothing)
-    return WorldState(RobotState(x, t), ap_dict, t, t_last_m)
+    if length(x) == 4
+        e_state = RobotState(x, t)
+    elseif length(x) == 5
+        e_state = UnicycleState(x, t)
+    else
+        @assert false "Invalid ego state dimension!"
+    end
+    return WorldState(e_state, ap_dict, t, t_last_m)
 end
+
 function isequal(w1::WorldState, w2::WorldState)
     return begin w1.e_state == w2.e_state && w1.ap_dict == w2.ap_dict &&
                  w1.t == w2.t && w1.t_last_m == w2.t_last_m

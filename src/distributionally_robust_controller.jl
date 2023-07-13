@@ -586,6 +586,7 @@ function compute_CVaR_array_gpu(sim_result::Array{Float32, 3},
 
     # get mean and cov
     n_pedestrians = 0;
+    first_repeat = 4 - Int(round((to_sec(w_init.t) - to_sec(w_init.t_last_m))/0.1));
     for key in keys(prediction_mean_dict)
         n_pedestrians += 1;
 
@@ -593,16 +594,25 @@ function compute_CVaR_array_gpu(sim_result::Array{Float32, 3},
         mean = prediction_mean_dict[key];
         pos = vcat(current_pos, mean);
 
-        interpolated_pos = Array{Float64, 2}(undef, size(sim_result, 2), 2);
-        for i in 1:size(sim_result, 2)-1
-            interpolate = (rem(i, pred_expansion_factor)/pred_expansion_factor)*pos[div(i, pred_expansion_factor)+2,:] + 
-                    (1-(rem(i, pred_expansion_factor)/pred_expansion_factor))*pos[div(i, pred_expansion_factor)+1,:];
-            interpolated_pos[i, :] = interpolate;
-        end
-        interpolated_pos[end, :] = pos[end, :];
-        interpolated_pos_total[n_pedestrians, :, :, :] = repeat(reshape(interpolated_pos, (1, size(interpolated_pos, 1), 2)), inner = (size(sim_result, 1), 1, 1));
+        # interpolated_pos = Array{Float64, 2}(undef, size(sim_result, 2), 2);
+        # for i in 1:size(sim_result, 2)-1
+        #     interpolate = (rem(i, pred_expansion_factor)/pred_expansion_factor)*pos[div(i, pred_expansion_factor)+2,:] + 
+        #             (1-(rem(i, pred_expansion_factor)/pred_expansion_factor))*pos[div(i, pred_expansion_factor)+1,:];
+        #     interpolated_pos[i, :] = interpolate;
+        # end
+        # interpolated_pos[end, :] = pos[end, :];
+        # interpolated_pos_total[n_pedestrians, :, :, :] = repeat(reshape(interpolated_pos, (1, size(interpolated_pos, 1), 2)), inner = (size(sim_result, 1), 1, 1));
+        currnet_pos = repeat(current_pos, inner=(first_repeat, 1));
+        mean = repeat(mean, inner=(pred_expansion_factor, 1));
+        pos = vcat(currnet_pos, mean);
+        interpolated_pos = pos[1:size(sim_result, 2), :]
+        interpolated_pos = reshape(interpolated_pos, (1, size(interpolated_pos)...));
+        interpolated_pos_total[n_pedestrians, :, :, :] = repeat(interpolated_pos, inner=(size(sim_result, 1), 1, 1));
 
-        interpolated_cov = repeat(prediction_cov_dict[key], inner = (pred_expansion_factor, 1, 1));
+        current_cov = zeros(1, 2, 2);
+        avg_cov = repeat(prediction_cov_dict[key], inner=(pred_expansion_factor, 1, 1));
+        cov = cat(current_cov, avg_cov, dims=1);
+        interpolated_cov = cov[1:size(sim_result, 2), :, :]
         interpolated_cov = reshape(interpolated_cov, (1, size(interpolated_cov)...));
         interpolated_cov_total[n_pedestrians, :, :, :, :] = repeat(interpolated_cov, inner=(size(sim_result, 1), 1, 1, 1));
     end
@@ -613,6 +623,7 @@ function compute_CVaR_array_gpu(sim_result::Array{Float32, 3},
     dist = sqrt.(rel_vec[:, :, :, 1].^2 + rel_vec[:, :, :, 2].^2) .- cnt_param.human_size;
 
     # GPU setting
+    # (n_pedestrians, n_controls, n_horizon)
     out = CuArray{Float32}(undef, length(prediction_mean_dict), size(sim_result, 1), size(sim_result, 2));
     interpolated_cov_total_gpu = cu(interpolated_cov_total);
     rel_vec_gpu = cu(rel_vec);
@@ -633,7 +644,7 @@ function compute_CVaR_array_gpu(sim_result::Array{Float32, 3},
     CVaR = dropdims(maximum(CVaR_key, dims=1), dims=1);
 
     max_CVaR = dropdims(maximum(CVaR, dims=2), dims=2);
-    discount_factor = cumprod(0.9*ones(size(sim_result, 2)));
+    discount_factor = cumprod(0.95*ones(size(sim_result, 2)));
     sum_CVaR = CVaR * discount_factor;
 
     return sum_CVaR, max_CVaR
