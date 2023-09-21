@@ -66,13 +66,13 @@ function __init__()
     from model.model_registrar import ModelRegistrar
     from environment import Environment, Scene, Node
 
-    # For CrowdNav Baseline
-    import configparser
-    import crowd_nav
-    import gym
-    from crowd_nav.policy.policy_factory import policy_factory
-    from crowd_sim.envs.utils.robot import Robot
-    from crowd_sim.envs.utils.state import ObservableState
+    # # For CrowdNav Baseline
+    # import configparser
+    # import crowd_nav
+    # import gym
+    # from crowd_nav.policy.policy_factory import policy_factory
+    # from crowd_sim.envs.utils.robot import Robot
+    # from crowd_sim.envs.utils.state import ObservableState
 
     def load_hyperparams(model_dir, conf_file):
         '''
@@ -326,6 +326,7 @@ export
     schedule_control_update!,
     drc_control_update!,
     get_action!,
+    soft_cem_optimization!,
     cem_optimization!,
     get_mean_cov,
     compute_cost_CvaR,
@@ -354,7 +355,8 @@ export
     visualize!,
     make_gif,
     fetch_stats_filtered,
-    plot_histogram
+    plot_histogram,
+    visualize_pyplot!
 include("drc_utils.jl")
 
 end # module

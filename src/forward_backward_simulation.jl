@@ -375,7 +375,7 @@ function compute_cost_gradients(best_ex_array_gpu::CuArray{Float32, 2},
                                 time_idx_ap_array_gpu::CuArray{Int32, 1},
                                 target_pos_array_gpu::CuArray{Float32, 2},
                                 cost_param::CostParameter)
-    if name(CuDevice(0)) == "NVIDIA GeForce RTX 3060"
+    if name(CuDevice(0)) == "NVIDIA GeForce RTX 3060" || name(CuDevice(0)) == "NVIDIA GeForce RTX 3070 Laptop GPU"
         # Instantaneous costs
         inst_pos_cost_grad_array_gpu = instant_position_cost_gradient(best_ex_array_gpu, target_pos_array_gpu,
                                                                       cost_param, threads=256);

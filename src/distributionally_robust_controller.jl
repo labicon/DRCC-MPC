@@ -271,21 +271,61 @@ function get_action!(controller::DRCController,
     return u
 end
 
+function soft_cem_optimization!(controller::DRCController,
+                                cnt_param::DRCControlParameter,
+                                prediction_mean_dict::Dict{String, Array{Float64, 2}},
+                                prediction_cov_dict::Dict{String, Array{Float64, 3}},
+                                w_init::WorldState,
+                                target_trajectory::Trajectory2D)
+
+    dist_mean = ones(cnt_param.horizon, 2) .* cnt_param.cem_init_mean';
+    dist_var = ones(cnt_param.horizon, 2) .* cnt_param.eamax^2;
+
+    for iteration in 1:cnt_param.cem_init_iterations
+        # sample control candidates
+        u_candidates = zeros(cnt_param.cem_init_num_samples + 1, cnt_param.horizon, 2);
+
+        for i in 1:cnt_param.horizon
+            lb_dist = dist_mean[i,:] .+ cnt_param.eamax;
+            ub_dist = cnt_param.eamax .- dist_mean[i,:];
+            dist_var[i,:] = min(min((lb_dist/2).^2, ((ub_dist/2).^2)), dist_var[i,:]);
+            u_candidates[1, i, :] = dist_mean[i,:]';
+            u_candidates[2:end, i, :] = sqrt.(dist_var[i,:])' .* rand(Normal(0.0, 1.0), (cnt_param.cem_init_num_samples, 2)) .+ dist_mean[i,:]';
+        end
+        clamp!(u_candidates, -cnt_param.eamax, cnt_param.eamax)
+        # compute cost and CVaR for each control candidates
+        cost, CVaR_sum, CVaR_max = compute_cost_CVaR_gpu(u_candidates, cnt_param, controller.sim_param, target_trajectory,
+                prediction_mean_dict, prediction_cov_dict, w_init, controller.cost_param);
+
+        optimization_objective = cost + 1.0 * CVaR_sum;
+
+        # sort cost and find elite control candidates
+        order = sortperm(optimization_objective);
+        u_candidates = u_candidates[order,:,:];
+
+        N_elite = min(cnt_param.cem_init_num_elites, size(u_candidates, 1));
+        elite_samples = u_candidates[1:N_elite,:,:];
+
+        # update mean and var
+        new_mean = dropdims(mean(elite_samples, dims=1), dims=1);
+        new_var = dropdims(var(elite_samples, dims=1), dims=1);
+        dist_mean = cnt_param.cem_init_alpha * dist_mean .+ (1-cnt_param.cem_init_alpha) * new_mean;
+        dist_var = cnt_param.cem_init_alpha * dist_var .+ (1-cnt_param.cem_init_alpha) * new_var;
+        clamp!(dist_mean, -cnt_param.eamax, cnt_param.eamax)
+
+        controller.previous_cnt_plan = elite_samples[1,:,:];
+    end
+
+    return controller.previous_cnt_plan[1,:]
+end
+
 function cem_optimization!(controller::DRCController,
                                     cnt_param::DRCControlParameter,
                                     prediction_mean_dict::Dict{String, Array{Float64, 2}},
                                     prediction_cov_dict::Dict{String, Array{Float64, 3}},
                                     w_init::WorldState,
                                     target_trajectory::Trajectory2D)
-    # initialize control candidates
-    # if isnothing(controller.previous_cnt_plan)
-    #     dist_mean = [cnt_param.cem_init_mean for i in 1:cnt_param.horizon];
-    #     dist_var = [[1.0, 1.0] .* cnt_param.eamax^2 for i in 1:cnt_param.horizon];
-    # else
-    #     dist_mean = [vec(controller.previous_cnt_plan[i,:]) for i in 2:cnt_param.horizon];
-    #     push!(dist_mean, vec(controller.previous_cnt_plan[end,:]));
-    #     dist_var = [[1.0, 1.0] .* cnt_param.eamax^2 for i in 1:cnt_param.horizon];
-    # end
+
     dist_mean = ones(cnt_param.horizon, 2) .* cnt_param.cem_init_mean';
     dist_var = ones(cnt_param.horizon, 2) .* cnt_param.eamax^2;
 
@@ -333,13 +373,7 @@ function cem_optimization!(controller::DRCController,
         dist_mean = cnt_param.cem_init_alpha * dist_mean .+ (1-cnt_param.cem_init_alpha) * new_mean;
         dist_var = cnt_param.cem_init_alpha * dist_var .+ (1-cnt_param.cem_init_alpha) * new_var;
         clamp!(dist_mean, -cnt_param.eamax, cnt_param.eamax)
-        # for i in 1:cnt_param.horizon
-        #     new_mean = vec(mean(elite_samples[:,i,:], dims=1));
-        #     new_var = vec(var(elite_samples[:,i,:], dims=1));
-        #     dist_mean[i] = cnt_param.cem_init_alpha*dist_mean[i] + (1-cnt_param.cem_init_alpha)*new_mean;
-        #     dist_var[i] = cnt_param.cem_init_alpha*dist_var[i] + (1-cnt_param.cem_init_alpha)*new_var;
-        #     clamp!(dist_mean[i], -cnt_param.eamax, cnt_param.eamax)
-        # end
+
         controller.previous_cnt_plan = elite_samples[1,:,:];
     end
 
@@ -516,57 +550,6 @@ function compute_CVaR_array(sim_result::Array{Float32, 3},
     discount_factor = cumprod(0.9*ones(size(sim_result, 2)));
     sum_CVaR = CVaR * discount_factor;
 
-
-    # for key in keys(prediction_mean_dict)
-    #     # get mean and cov
-    #     current_pos = current_ado_position_dict[key]';
-    #     mean = prediction_mean_dict[key];
-    #     pos = vcat(current_pos, mean);
-    #     interpolated_pos = Array{Float64, 2}(undef, size(sim_result, 2), 2);
-    #     for i in 1:size(sim_result, 2)-1
-    #         interpolate = (rem(i, pred_expansion_factor)/pred_expansion_factor)*pos[div(i, pred_expansion_factor)+2,:] + 
-    #                 (1-(rem(i, pred_expansion_factor)/pred_expansion_factor))*pos[div(i, pred_expansion_factor)+1,:];
-    #         interpolated_pos[i, :] = interpolate;
-    #     end
-    #     interpolated_pos[end, :] = pos[end, :];
-    #     interpolated_cov = repeat(prediction_cov_dict[key], inner = (pred_expansion_factor, 1, 1));
-    #     interpolated_cov = reshape(interpolated_cov, (1, size(interpolated_cov)...));
-    #     interpolated_cov = repeat(interpolated_cov, inner=(size(sim_result, 1), 1, 1, 1));
-
-    #     rel_vec = sim_result - repeat(reshape(interpolated_pos, (1, size(interpolated_pos, 1), 2)), inner = (size(sim_result, 1), 1, 1));
-    #     dist = sqrt.(rel_vec[:, :, 1].^2 + rel_vec[:, :, 2].^2) .- cnt_param.human_size;
-
-    #     D_11 = 1 ./ dist.^2;
-    #     D_22 = 1/100.0^2 .* zeros(size(D_11));
-    #     # D_12 = zeros(size(D_11));
-    #     # D_21 = zeros(size(D_11));
-    #     # D = cat(cat(D_11, D_12, dims=3), cat(D_21, D_22, dims=3), dims=4);
-
-    #     Q_11 = rel_vec[:, :, 1] ./ dist;
-    #     Q_12 = rel_vec[:, :, 2] ./ dist;
-    #     Q_21 = -rel_vec[:, :, 2] ./ dist;
-    #     Q_22 = rel_vec[:, :, 1] ./ dist;
-    #     # Q = cat(cat(Q_11, Q_12, dims=3), cat(Q_21, Q_22, dims=3), dims=4);
-    #     # Q_transpose = cat(cat(Q_11, Q_21, dims=3), cat(Q_12, Q_22, dims=3), dims=4)
-
-    #     E_11 = Q_11.^2 .* D_11 + Q_12.^2 .* D_22;
-    #     E_12 = Q_11 .* Q_21 .* D_11 + Q_12 .* Q_22 .* D_22;
-    #     E_21 = Q_21 .* Q_11 .* D_11 + Q_22 .* Q_12 .* D_22;
-    #     E_22 = Q_21.^2 .* D_11 + Q_22.^2 .* D_22;
-    #     # E = cat(cat(E_11, E_12, dims=3), cat(E_21, E_22, dims=3), dims=4);
-
-    #     tr_cov_E = interpolated_cov[:, :, 1, 1] .* E_11 + interpolated_cov[:, :, 1, 2] .* E_21 + 
-    #                 interpolated_cov[:, :, 2, 1] .* E_12 + interpolated_cov[:, :, 2, 2] .* E_22;
-
-    #     CVaR_key = -1.0 .+ 1/cnt_param.epsilon .* tr_cov_E;
-    #     CVaR_key[dist .<= 0.0] .= 1.0;
-    #     CVaR = max.(CVaR, CVaR_key);
-        
-    # end
-    # max_CVaR = dropdims(maximum(CVaR, dims=2), dims=2);
-    # discount_factor = cumprod(0.9*ones(size(sim_result, 2)));
-    # sum_CVaR = CVaR * discount_factor;
-
     return sum_CVaR, max_CVaR
 end
 
@@ -594,14 +577,6 @@ function compute_CVaR_array_gpu(sim_result::Array{Float32, 3},
         mean = prediction_mean_dict[key];
         pos = vcat(current_pos, mean);
 
-        # interpolated_pos = Array{Float64, 2}(undef, size(sim_result, 2), 2);
-        # for i in 1:size(sim_result, 2)-1
-        #     interpolate = (rem(i, pred_expansion_factor)/pred_expansion_factor)*pos[div(i, pred_expansion_factor)+2,:] + 
-        #             (1-(rem(i, pred_expansion_factor)/pred_expansion_factor))*pos[div(i, pred_expansion_factor)+1,:];
-        #     interpolated_pos[i, :] = interpolate;
-        # end
-        # interpolated_pos[end, :] = pos[end, :];
-        # interpolated_pos_total[n_pedestrians, :, :, :] = repeat(reshape(interpolated_pos, (1, size(interpolated_pos, 1), 2)), inner = (size(sim_result, 1), 1, 1));
         currnet_pos = repeat(current_pos, inner=(first_repeat, 1));
         mean = repeat(mean, inner=(pred_expansion_factor, 1));
         pos = vcat(currnet_pos, mean);
@@ -640,11 +615,12 @@ function compute_CVaR_array_gpu(sim_result::Array{Float32, 3},
     end
 
     CVaR_key = collect(out);
-    CVaR_key[dist .<= 0.0] .= 10.0;
+    CVaR_key[dist .<= 0.0] .= 100.0;
+    CVaR_key[CVaR_key .> 100.0] .= 100.0;
     CVaR = dropdims(maximum(CVaR_key, dims=1), dims=1);
 
     max_CVaR = dropdims(maximum(CVaR, dims=2), dims=2);
-    discount_factor = cumprod(0.95*ones(size(sim_result, 2)));
+    discount_factor = cumprod(cnt_param.discount*ones(size(sim_result, 2)));
     sum_CVaR = CVaR * discount_factor;
 
     return sum_CVaR, max_CVaR
@@ -728,7 +704,6 @@ function compute_CVaR(sim_result::Vector{RobotState},
                 E = Q*D*transpose(Q);
                 # compute CVaR
                 CVaR[euler_idx] = max(CVaR[euler_idx], -1 + 1/cnt_param.epsilon * tr(cov[pred_idx, :, :] * E));
-                # append!(CVaR, -1 + 1/cnt_param.epsilon * tr(cov[pred_idx, :, :] * E));
             else
                 CVaR[euler_idx] = 1.0;
             end
@@ -738,11 +713,7 @@ function compute_CVaR(sim_result::Vector{RobotState},
     for idx in 1:length(sim_result)
         CVaR[idx] = CVaR[idx] * 0.9^(idx-1);
     end
-    # if isempty(CVaR)
-    #     return -100.0
-    # else
-    #     return maximum(CVaR)
-    # end
+
     return sum(CVaR), maximum(CVaR)
 end
 

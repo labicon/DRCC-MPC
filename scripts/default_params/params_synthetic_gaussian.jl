@@ -2,7 +2,7 @@ using Distributions
 using LinearAlgebra
 
 # Scene loader & Predictor parameters
-scene_mode = "synthetic";                                                           # "synthetic" or "data"
+scene_mode = "shiftedsynthetic";                                                           # "synthetic" or "data"
 prediction_mode = "gaussian";                                                       # "gaussian" or "trajectron" or "oracle"
 prediction_device = "cpu";                                                          # "cpu" or "cuda"
 prediction_steps = 10;                                                              # number of steps to look ahead in the future

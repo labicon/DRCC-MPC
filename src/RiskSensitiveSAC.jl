@@ -66,13 +66,13 @@ function __init__()
     from model.model_registrar import ModelRegistrar
     from environment import Environment, Scene, Node
 
-    # For CrowdNav Baseline
-    import configparser
-    import crowd_nav
-    import gym
-    from crowd_nav.policy.policy_factory import policy_factory
-    from crowd_sim.envs.utils.robot import Robot
-    from crowd_sim.envs.utils.state import ObservableState
+    # # For CrowdNav Baseline
+    # import configparser
+    # import crowd_nav
+    # import gym
+    # from crowd_nav.policy.policy_factory import policy_factory
+    # from crowd_sim.envs.utils.robot import Robot
+    # from crowd_sim.envs.utils.state import ObservableState
 
     def load_hyperparams(model_dir, conf_file):
         '''

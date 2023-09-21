@@ -12,6 +12,7 @@ using Distributions
 using FileIO
 using JLD2
 using Plots
+import PyPlot; const plt = PyPlot
 using Printf
 using ProgressMeter
 using Random
@@ -415,6 +416,85 @@ function visualize!(color_dict::Dict, ap_dict::Dict{String, Vector{Float64}},
 end
 =#
 
+function visualize_pyplot!(color_dict::Dict, w::WorldState,
+                    target_trajectory::Trajectory2D,
+                    outputs_dict::Dict{String, Array{Float64, 3}},
+                    num_samples::Int64,
+                    #nominal_control_idx::Int64,
+                    #nominal_trajectory::Union{Nothing, Vector{Vector{Float64}}}=nothing;
+                    figsize, legend,
+                    legendfontsize,
+                    xlim, ylim, markersize,
+                    show_velocity,
+                    show_prediction,
+                    dummy_pos,
+                    filename)
+
+    rcParams = PyPlot.PyDict(PyPlot.matplotlib."rcParams");
+    rcParams["font.family"] = "serif";
+    rcParams["font.serif"] = ["Palatino"];
+
+    plt.figure(figsize=figsize);
+    plt.xlim(xlim);
+    plt.ylim(ylim);
+    # plt.aspect(1.0);
+    plt.xlabel("x[m]");
+    plt.ylabel("y[m]");
+
+    robot_key = "Ego Robot"
+    color_dict = Dict(
+        "Ego Robot" => "blue",
+        "Pedestrian" => "orange"
+    )
+    t = @sprintf "Time: %.2f [s]" round(to_sec(w.t), digits=2)
+    plt.scatter(w.e_state.x[1], w.e_state.x[2], color=color_dict[robot_key],
+             label=robot_key,
+             s=markersize)
+
+    if show_velocity
+        pos = get_position(w.e_state);
+        vel = get_velocity(w.e_state);
+        plt.arrow(pos[1], pos[2], pos[1] + vel[1], pos[2] + vel[2],
+                color=color_dict[robot_key], label="Velocity")
+    end
+    goal_pos = collect(values(target_trajectory))[end];
+
+    plt.scatter(goal_pos[1], goal_pos[2], color=color_dict[robot_key],
+             label="Ego Goal",
+             marker="*",
+             s=markersize)
+    for key in keys(w.ap_dict)
+        plt.scatter(w.ap_dict[key][1], w.ap_dict[key][2],
+                 color=color_dict["Pedestrian"], #label=key,
+                 s=markersize/1.5, marker="s");
+        if show_prediction && haskey(outputs_dict, key)
+            # note that prediction is dependent on the nominal control choice.
+            prediction_array = outputs_dict[key]
+            if isnothing(dummy_pos)
+                for jj = 1:size(prediction_array, 1)
+                    plt.plot(prediction_array[jj, :, 1], prediction_array[jj, :, 2],
+                          color=color_dict["Pedestrian"], alpha=0.3)
+                end
+            else
+                for jj = 1:size(prediction_array, 1)
+                    prediction_array_filtered = [hcat(filter(x -> x != dummy_pos, prediction_array[jj, :, 1])...);
+                                                 hcat(filter(y -> y != dummy_pos, prediction_array[jj, :, 2])...)];
+                    if size(prediction_array_filtered, 1) == 2 &&
+                            length(prediction_array_filtered[1, :]) == length(prediction_array_filtered[2, :])
+                        plt.plot(prediction_array_filtered[1, :], prediction_array_filtered[2, :],
+                                color=color_dict["Pedestrian"], alpha=0.3)
+                    end
+                end
+            end
+        end
+    end
+    plt.legend()
+
+    plt.savefig("DRC_eth_data_trajectron.png")
+
+    return plt.gcf()
+end
+
 function visualize!(color_dict::Dict, w::WorldState,
                     target_trajectory::Trajectory2D,
                     outputs_dict::Dict{String, Array{Float64, 3}},
@@ -428,8 +508,8 @@ function visualize!(color_dict::Dict, w::WorldState,
                     show_prediction,
                     dummy_pos)
     plt = plot(legendfontsize=legendfontsize,
-               legend=legend, size=figsize);
-    plot!(xlim=xlim, ylim=ylim, aspect_ratio=1.0, xlabel="x[m]", ylabel="y[m]");
+               legend=legend, size=figsize, grid=false);
+    plot!(xlim=xlim, ylim=ylim, aspect_ratio=1.0, xlabel="x[m]", ylabel="y[m]", grid=false);
     robot_key = "Ego Robot"
     # palette = get_color_palette(:auto, plot_color(:white), 30)
     palette = get_color_palette(:auto, plot_color(:white), 150)
@@ -447,27 +527,27 @@ function visualize!(color_dict::Dict, w::WorldState,
         plot!([pos[1], pos[1] + vel[1]],
               [pos[2], pos[2] + vel[2]],
               color=color_dict[robot_key], label="Velocity", arrow=:arrow,
-              alpha=0.5)
+              alpha=0.5, grid=false)
     end
     goal_pos = collect(values(target_trajectory))[end];
     scatter!((goal_pos[1], goal_pos[2]), color=color_dict[robot_key],
              label="Ego Goal",
              markershape=:star5,
-             markersize=markersize)
+             markersize=markersize, grid=false)
     for key in keys(w.ap_dict)
         if !haskey(color_dict, key)
             color_dict[key] = palette[length(color_dict) + 1];
         end
         scatter!((w.ap_dict[key][1], w.ap_dict[key][2]),
                  color=color_dict[key], label="", #label=key,
-                 markersize=markersize/1.5, markershape=:rect);
+                 markersize=markersize/1.5, markershape=:rect, grid=false);
         if show_prediction && haskey(outputs_dict, key)
             # note that prediction is dependent on the nominal control choice.
             prediction_array = outputs_dict[key]
             if isnothing(dummy_pos)
                 for jj = 1:size(prediction_array, 1)
                     plot!(prediction_array[jj, :, 1], prediction_array[jj, :, 2],
-                          color=color_dict[key], label="", alpha=0.3)
+                          color=color_dict[key], label="", alpha=0.3, grid=false)
                 end
             else
                 for jj = 1:size(prediction_array, 1)
@@ -476,7 +556,7 @@ function visualize!(color_dict::Dict, w::WorldState,
                     if size(prediction_array_filtered, 1) == 2 &&
                        length(prediction_array_filtered[1, :]) == length(prediction_array_filtered[2, :])
                        plot!(prediction_array_filtered[1, :], prediction_array_filtered[2, :],
-                             color=color_dict[key], label="", alpha=0.3)
+                             color=color_dict[key], label="", alpha=0.3, grid=false)
                     end
                 end
             end
@@ -548,7 +628,7 @@ function make_gif(result::DRCEvaluationResult;
                 ego_traj_x = [get_position(w.e_state)[1] for w in result.w_history[1:ii]]
                 ego_traj_y = [get_position(w.e_state)[2] for w in result.w_history[1:ii]]
                 ego_color = color_dict["Ego Robot"];
-                plot!(ego_traj_x, ego_traj_y, color=ego_color, label="Ego Trajectory", linewidth=1.5)
+                plot!(ego_traj_x, ego_traj_y, color=ego_color, linewidth=1.5, label="Ego Trajectory")
             end
             frame(anim, plt)
         end
