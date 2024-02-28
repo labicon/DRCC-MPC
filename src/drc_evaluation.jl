@@ -163,19 +163,6 @@ function evaluate(scene_loader::SceneLoader,
             process_start_time = time();
         end
 
-        # # Update target trajectory if necessary
-        # pos_error = get_position(w_history[end].e_state) -
-        #             get_position(target_trajectory, w_history[end].t);
-        # if norm(pos_error) > pos_error_replan
-        #     msg = "Position deviation: $(round(norm(pos_error), digits=4)). Target Trajectory is replanned."
-        #     push!(log, (current_time, msg));
-        #     target_trajectory = get_nominal_trajectory(w_history[end].e_state,
-        #                                                ego_pos_goal_vec,
-        #                                                target_speed,
-        #                                                to_sec(sim_end_time - w_init.t),
-        #                                                prediction_horizon);
-        # end
-
         # Proceed further
         if current_time < sim_end_time
             if to_sec(current_time) ≈ to_sec(last_control_update_time) + controller.cnt_param.dtr;
