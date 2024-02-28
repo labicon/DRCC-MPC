@@ -3,3 +3,6 @@ notebook/.ipynb_checkpoints/**
 .ipynb_checkpoints/**
 .idea/**
 simulation_data/**
+*.gif
+*.csv
+.jld2
