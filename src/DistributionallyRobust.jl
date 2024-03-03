@@ -26,14 +26,14 @@ using ProgressMeter
 using PyCall
 using Random
 
-# Modules for Buffered Input Cell and Related Functions (and constrained SAC optimizations)
-import Convex: Variable, norm, quadform, minimize, dot, solve!
-using GeometricalPredicates
-using LazySets
-using Polyhedra
-using SCS
-using ECOS
-using VoronoiCells
+# # Modules for Buffered Input Cell and Related Functions (and constrained SAC optimizations)
+# import Convex: Variable, norm, quadform, minimize, dot, solve!
+# using GeometricalPredicates
+# using LazySets
+# using Polyhedra
+# using SCS
+# using ECOS
+# using VoronoiCells
 
 function __init__()
     @info "Number of Julia Thread(s): $(Threads.nthreads())";
@@ -273,11 +273,7 @@ export
     reduce_to_positions,
     get_trajectory_for_ado,
     SyntheticSceneParameter,
-    SyntheticSceneLoader,
-    ShiftedSyntheticSceneParameter,
-    ShiftedSyntheticSceneLoader,
-    StopSyntheticSceneParameter,
-    StopSyntheticSceneLoader
+    SyntheticSceneLoader
 include("scene_loader.jl")
 
 # Predictor
@@ -290,9 +286,7 @@ export
     OraclePredictorParameter,
     OraclePredictor,
     GaussianPredictorParameter,
-    GaussianPredictor,
-    StopGaussianPredictorParameter,
-    StopGaussianPredictor
+    GaussianPredictor
 include("predictor.jl")
 
 # Forward-Backward Simulation

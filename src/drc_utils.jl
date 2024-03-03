@@ -432,7 +432,7 @@ function visualize!(color_dict::Dict, w::WorldState,
     plot!(xlim=xlim, ylim=ylim, aspect_ratio=1.0, xlabel="x[m]", ylabel="y[m]");
     robot_key = "Ego Robot"
     # palette = get_color_palette(:auto, plot_color(:white), 30)
-    palette = get_color_palette(:auto, plot_color(:white), 150)
+    palette = get_color_palette(:tab20, 30)
     if !haskey(color_dict, robot_key)
         color_dict[robot_key] = palette[1];
     end

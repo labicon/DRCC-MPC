@@ -333,13 +333,6 @@ function cem_optimization!(controller::DRCController,
         dist_mean = cnt_param.cem_init_alpha * dist_mean .+ (1-cnt_param.cem_init_alpha) * new_mean;
         dist_var = cnt_param.cem_init_alpha * dist_var .+ (1-cnt_param.cem_init_alpha) * new_var;
         clamp!(dist_mean, -cnt_param.eamax, cnt_param.eamax)
-        # for i in 1:cnt_param.horizon
-        #     new_mean = vec(mean(elite_samples[:,i,:], dims=1));
-        #     new_var = vec(var(elite_samples[:,i,:], dims=1));
-        #     dist_mean[i] = cnt_param.cem_init_alpha*dist_mean[i] + (1-cnt_param.cem_init_alpha)*new_mean;
-        #     dist_var[i] = cnt_param.cem_init_alpha*dist_var[i] + (1-cnt_param.cem_init_alpha)*new_var;
-        #     clamp!(dist_mean[i], -cnt_param.eamax, cnt_param.eamax)
-        # end
         controller.previous_cnt_plan = elite_samples[1,:,:];
     end
 
@@ -516,57 +509,6 @@ function compute_CVaR_array(sim_result::Array{Float32, 3},
     discount_factor = cumprod(0.9*ones(size(sim_result, 2)));
     sum_CVaR = CVaR * discount_factor;
 
-
-    # for key in keys(prediction_mean_dict)
-    #     # get mean and cov
-    #     current_pos = current_ado_position_dict[key]';
-    #     mean = prediction_mean_dict[key];
-    #     pos = vcat(current_pos, mean);
-    #     interpolated_pos = Array{Float64, 2}(undef, size(sim_result, 2), 2);
-    #     for i in 1:size(sim_result, 2)-1
-    #         interpolate = (rem(i, pred_expansion_factor)/pred_expansion_factor)*pos[div(i, pred_expansion_factor)+2,:] + 
-    #                 (1-(rem(i, pred_expansion_factor)/pred_expansion_factor))*pos[div(i, pred_expansion_factor)+1,:];
-    #         interpolated_pos[i, :] = interpolate;
-    #     end
-    #     interpolated_pos[end, :] = pos[end, :];
-    #     interpolated_cov = repeat(prediction_cov_dict[key], inner = (pred_expansion_factor, 1, 1));
-    #     interpolated_cov = reshape(interpolated_cov, (1, size(interpolated_cov)...));
-    #     interpolated_cov = repeat(interpolated_cov, inner=(size(sim_result, 1), 1, 1, 1));
-
-    #     rel_vec = sim_result - repeat(reshape(interpolated_pos, (1, size(interpolated_pos, 1), 2)), inner = (size(sim_result, 1), 1, 1));
-    #     dist = sqrt.(rel_vec[:, :, 1].^2 + rel_vec[:, :, 2].^2) .- cnt_param.human_size;
-
-    #     D_11 = 1 ./ dist.^2;
-    #     D_22 = 1/100.0^2 .* zeros(size(D_11));
-    #     # D_12 = zeros(size(D_11));
-    #     # D_21 = zeros(size(D_11));
-    #     # D = cat(cat(D_11, D_12, dims=3), cat(D_21, D_22, dims=3), dims=4);
-
-    #     Q_11 = rel_vec[:, :, 1] ./ dist;
-    #     Q_12 = rel_vec[:, :, 2] ./ dist;
-    #     Q_21 = -rel_vec[:, :, 2] ./ dist;
-    #     Q_22 = rel_vec[:, :, 1] ./ dist;
-    #     # Q = cat(cat(Q_11, Q_12, dims=3), cat(Q_21, Q_22, dims=3), dims=4);
-    #     # Q_transpose = cat(cat(Q_11, Q_21, dims=3), cat(Q_12, Q_22, dims=3), dims=4)
-
-    #     E_11 = Q_11.^2 .* D_11 + Q_12.^2 .* D_22;
-    #     E_12 = Q_11 .* Q_21 .* D_11 + Q_12 .* Q_22 .* D_22;
-    #     E_21 = Q_21 .* Q_11 .* D_11 + Q_22 .* Q_12 .* D_22;
-    #     E_22 = Q_21.^2 .* D_11 + Q_22.^2 .* D_22;
-    #     # E = cat(cat(E_11, E_12, dims=3), cat(E_21, E_22, dims=3), dims=4);
-
-    #     tr_cov_E = interpolated_cov[:, :, 1, 1] .* E_11 + interpolated_cov[:, :, 1, 2] .* E_21 + 
-    #                 interpolated_cov[:, :, 2, 1] .* E_12 + interpolated_cov[:, :, 2, 2] .* E_22;
-
-    #     CVaR_key = -1.0 .+ 1/cnt_param.epsilon .* tr_cov_E;
-    #     CVaR_key[dist .<= 0.0] .= 1.0;
-    #     CVaR = max.(CVaR, CVaR_key);
-        
-    # end
-    # max_CVaR = dropdims(maximum(CVaR, dims=2), dims=2);
-    # discount_factor = cumprod(0.9*ones(size(sim_result, 2)));
-    # sum_CVaR = CVaR * discount_factor;
-
     return sum_CVaR, max_CVaR
 end
 
@@ -577,7 +519,7 @@ function compute_CVaR_array_gpu(sim_result::Array{Float32, 3},
                             prediction_cov_dict::Dict{String, Array{Float64, 3}},
                             prediction_steps::Int64,
                             pred_expansion_factor::Int64,
-                            threads::NTuple{3, Int}=(4, 32, 8));
+                            threads::NTuple{3, Int}=(4, 16, 8));
 
     current_ado_position_dict = w_init.ap_dict;
 
@@ -594,14 +536,6 @@ function compute_CVaR_array_gpu(sim_result::Array{Float32, 3},
         mean = prediction_mean_dict[key];
         pos = vcat(current_pos, mean);
 
-        # interpolated_pos = Array{Float64, 2}(undef, size(sim_result, 2), 2);
-        # for i in 1:size(sim_result, 2)-1
-        #     interpolate = (rem(i, pred_expansion_factor)/pred_expansion_factor)*pos[div(i, pred_expansion_factor)+2,:] + 
-        #             (1-(rem(i, pred_expansion_factor)/pred_expansion_factor))*pos[div(i, pred_expansion_factor)+1,:];
-        #     interpolated_pos[i, :] = interpolate;
-        # end
-        # interpolated_pos[end, :] = pos[end, :];
-        # interpolated_pos_total[n_pedestrians, :, :, :] = repeat(reshape(interpolated_pos, (1, size(interpolated_pos, 1), 2)), inner = (size(sim_result, 1), 1, 1));
         currnet_pos = repeat(current_pos, inner=(first_repeat, 1));
         mean = repeat(mean, inner=(pred_expansion_factor, 1));
         pos = vcat(currnet_pos, mean);

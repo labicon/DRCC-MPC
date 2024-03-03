@@ -132,8 +132,7 @@ function evaluate(scene_loader::SceneLoader,
                     ado_positions = fetch_ado_positions!(scene_loader, prediction_dict);
                 end
             end
-            # Starting timer to keep track of computation time
-            process_start_time = time();
+
             if current_time < sim_end_time
                 if typeof(controller) == DRCController
                     # Schedule prediction
@@ -157,6 +156,8 @@ function evaluate(scene_loader::SceneLoader,
             w_history[end].ap_dict = convert_nodes_to_str(ado_positions);
             w_history[end].t_last_m = current_time;
             m_time_idx += 1;
+            # Starting timer to keep track of computation time
+            process_start_time = time();
         else
             # No new measurement
             # Starting timer to keep track of computation time
@@ -173,11 +174,11 @@ function evaluate(scene_loader::SceneLoader,
             end
             # Get control for current_time
             u = control!(controller, current_time, log)
+            # Stop timer and measure computation time so far in this iteration.
+            elapsed = time() - process_start_time;
             prediction_dict_history[end] = get_clipped_prediction_dict(controller.prediction_dict,
                                                                         controller.sim_param.num_samples);
 
-            # Stop timer and measure computation time so far in this iteration.
-            elapsed = time() - process_start_time;
 
             # Accumulate cost
             total_position_cost +=

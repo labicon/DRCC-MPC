@@ -322,12 +322,12 @@ function compute_costs(ex_array_gpu::CuArray{Float32, 3},
     if name(CuDevice(0)) == "NVIDIA GeForce RTX 3060"
         # Instataneous costs
         inst_cnt_cost_array_gpu = instant_control_cost(u_array_gpu, cost_param, threads=(16, 64));
-        inst_pos_cost_array_gpu = instant_position_cost(ex_array_gpu, target_pos_array_gpu, cost_param, threads=(16, 64));
+        inst_pos_cost_array_gpu = instant_position_cost(ex_array_gpu, target_pos_array_gpu, cost_param, threads=(64, 16));
         # inst_col_cost_array_gpu = instant_collision_cost(ex_array_gpu, ap_array_gpu,
         #                                                  time_idx_ap_array_gpu, control_idx_ex_array_gpu,
         #                                                  cost_param, threads=(64, 4, 4));
         # Terminal costs
-        term_pos_cost_array_gpu = terminal_position_cost(ex_array_gpu, target_pos_array_gpu, cost_param, threads=(1024, 1));
+        term_pos_cost_array_gpu = terminal_position_cost(ex_array_gpu, target_pos_array_gpu, cost_param, threads=(64, 16));
         # term_col_cost_array_gpu = terminal_collision_cost(ex_array_gpu, ap_array_gpu,
         #                                                   time_idx_ap_array_gpu, control_idx_ex_array_gpu,
         #                                                   cost_param, threads=(128, 1, 8));

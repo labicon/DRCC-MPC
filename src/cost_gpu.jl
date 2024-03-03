@@ -128,7 +128,7 @@ function instant_collision_cost(ex_array::AbstractArray{Float32, 3},
                                 time_idx_ap_array::AbstractArray{Int32, 1},
                                 control_idx_ex_array::AbstractArray{Int32, 1},
                                 param::CostParameter;
-                                threads::NTuple{3, Int}=(32, 4, 2))
+                                threads::NTuple{3, Int}=(8, 4, 2))
 
     # out : (num_samples*num_controls, total_timesteps - 1, num_ado_agents)
     # ex_array : (num_controls, total_timesteps, 4)

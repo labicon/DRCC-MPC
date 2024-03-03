@@ -15,6 +15,7 @@ using Random
 using RobotOS
 using SCS
 using VoronoiCells
+import VoronoiCells: IndexablePoint2D, Point2D
 
 
 # Buffered Voronoi Cells

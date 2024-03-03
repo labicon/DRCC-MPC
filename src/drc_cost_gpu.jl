@@ -2,7 +2,8 @@
 #// File Name: cost_gpu.jl
 #// Author: Haruki Nishimura (hnishimura@stanford.edu)
 #// Date Created: 2021/01/15
-#// Description: GPU (CUDA) Cost model for Risk Sensitive Stochastic SAC
+#// Modified by Kanghyun Ryu (kanghyun.ryu@berkeley.edu)
+#// Description: GPU (CUDA) Cost model for DRCC-MPC
 #///////////////////////////////////////
 
 using CUDA
@@ -36,7 +37,7 @@ end
 function instant_position_cost(ex_array::AbstractArray{Float32, 3},
                                target_pos_array::AbstractArray{Float32, 2},
                                param::DRCCostParameter;
-                               threads::NTuple{2, Int}=(8, 32))
+                               threads::NTuple{2, Int}=(32, 8))
 
     # out : (num_controls, total_timesteps - 1)
     # ex_array : (num_controls, total_timesteps, 4)
@@ -158,7 +159,7 @@ function instant_collision_cost(ex_array::AbstractArray{Float32, 3},
 end
 
 # Terminal Cost
-# # Position
+# Position
 function kernel_terminal_position_cost!(out::AbstractArray{Float32, 2},
                                         ex_array::AbstractArray{Float32, 3},
                                         target_pos_array::AbstractArray{Float32, 2},
@@ -176,7 +177,7 @@ end
 function terminal_position_cost(ex_array::AbstractArray{Float32, 3},
                                 target_pos_array::AbstractArray{Float32, 2},
                                 param::DRCCostParameter;
-                                threads::NTuple{2, Int}=(256, 1))
+                                threads::NTuple{2, Int}=(8, 8))
 
     # out : (num_controls, 1)
     # ex_array : (num_controls, total_timesteps, 4)
@@ -189,7 +190,7 @@ function terminal_position_cost(ex_array::AbstractArray{Float32, 3},
     numblocks_y = ceil(Int, size(out, 2)/threads[2]);
     blocks = (numblocks_x, numblocks_y)
     CUDA.@sync begin
-        @cuda threads=threads blocks=blocks kernel_terminal_position_cost!(out, ex_array[:, end:end, :], target_pos_array[end:end, :], Cep)
+        @cuda threads=threads blocks=blocks kernel_instant_position_cost!(out, ex_array[:, end:end, :], target_pos_array[end:end, :], Cep)
     end
     return out
 end

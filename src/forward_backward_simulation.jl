@@ -285,12 +285,12 @@ function compute_costs(ex_array_gpu::CuArray{Float32, 3},
         inst_pos_cost_array_gpu = instant_position_cost(ex_array_gpu, target_pos_array_gpu, cost_param, threads=(16, 64));
         inst_col_cost_array_gpu = instant_collision_cost(ex_array_gpu, ap_array_gpu,
                                                          time_idx_ap_array_gpu, control_idx_ex_array_gpu,
-                                                         cost_param, threads=(64, 4, 4));
+                                                         cost_param, threads=(32, 4, 4));
         # Terminal costs
-        term_pos_cost_array_gpu = terminal_position_cost(ex_array_gpu, target_pos_array_gpu, cost_param, threads=(1024, 1));
+        term_pos_cost_array_gpu = terminal_position_cost(ex_array_gpu, target_pos_array_gpu, cost_param, threads=(32, 1));
         term_col_cost_array_gpu = terminal_collision_cost(ex_array_gpu, ap_array_gpu,
                                                           time_idx_ap_array_gpu, control_idx_ex_array_gpu,
-                                                          cost_param, threads=(128, 1, 8));
+                                                          cost_param, threads=(32, 1, 8));
     else
         # Instataneous costs
         inst_cnt_cost_array_gpu = instant_control_cost(u_array_gpu, cost_param);
@@ -381,13 +381,13 @@ function compute_cost_gradients(best_ex_array_gpu::CuArray{Float32, 2},
                                                                       cost_param, threads=256);
         inst_col_cost_grad_array_gpu = instant_collision_cost_gradient(best_ex_array_gpu, best_ap_array_gpu,
                                                                        time_idx_ap_array_gpu, cost_param,
-                                                                       threads=(64, 4, 4));
+                                                                       threads=(32, 4, 4));
 
         # Terminal costs
         term_pos_cost_grad_array_gpu = terminal_position_cost_gradient(best_ex_array_gpu, target_pos_array_gpu,
                                                                        cost_param);
         term_col_cost_grad_array_gpu = terminal_collision_cost_gradient(best_ex_array_gpu, best_ap_array_gpu,
-                                                                        time_idx_ap_array_gpu, cost_param, threads=(128, 1, 8));
+                                                                        time_idx_ap_array_gpu, cost_param, threads=(32, 1, 8));
     else
         # Instantaneous costs
         inst_pos_cost_grad_array_gpu = instant_position_cost_gradient(best_ex_array_gpu, target_pos_array_gpu,
