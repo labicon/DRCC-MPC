@@ -1,3 +1,9 @@
 [submodule "Python-RVO2"]
 	path = Python-RVO2
 	url = https://github.com/sybrenstuvel/Python-RVO2
+[submodule "Trajectron-plus-plus"]
+	path = Trajectron-plus-plus
+	url = https://github.com/StanfordASL/Trajectron-plus-plus.git
+[submodule "CrowdNav"]
+	path = CrowdNav
+	url = https://github.com/vita-epfl/CrowdNav.git
