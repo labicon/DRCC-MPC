@@ -99,6 +99,9 @@ function evaluate(scene_loader::SceneLoader,
     sim_end_time = measurement_schedule[end];
     prediction_horizon = controller.sim_param.dto*
                          controller.sim_param.prediction_steps;
+
+    # computation time list
+    comp_time_list = [];
     while w_history[end].t <= sim_end_time
         current_time = w_history[end].t;
         if current_time == measurement_schedule[m_time_idx]
@@ -118,21 +121,9 @@ function evaluate(scene_loader::SceneLoader,
                     delete!(ado_positions, key_to_remove)
                     delete!(ado_inputs, key_to_remove)
                 end
-            elseif typeof(scene_loader) == SyntheticSceneLoader || typeof(scene_loader) == ShiftedSyntheticSceneLoader || typeof(scene_loader) == StopSyntheticSceneLoader
-                if typeof(scene_loader) == StopSyntheticSceneLoader && m_time_idx == 10
-                    # controller.predictor.stop = true;
-                    scene_loader.stop = true;
-                    @warn "Pedestrian stopped"
-                end
-                if typeof(controller) == DRCController
-                    ado_positions = fetch_ado_positions!(scene_loader, controller.prediction_dict);
-                else
-                    prediction_dict = sample_future_ado_positions!(predictor,
-                                                                    w_history[end].ap_dict);
-                    ado_positions = fetch_ado_positions!(scene_loader, prediction_dict);
-                end
             end
-
+            # Starting timer to keep track of computation time
+            process_start_time = time();
             if current_time < sim_end_time
                 if typeof(controller) == DRCController
                     # Schedule prediction
@@ -156,8 +147,6 @@ function evaluate(scene_loader::SceneLoader,
             w_history[end].ap_dict = convert_nodes_to_str(ado_positions);
             w_history[end].t_last_m = current_time;
             m_time_idx += 1;
-            # Starting timer to keep track of computation time
-            process_start_time = time();
         else
             # No new measurement
             # Starting timer to keep track of computation time
@@ -176,6 +165,7 @@ function evaluate(scene_loader::SceneLoader,
             u = control!(controller, current_time, log)
             # Stop timer and measure computation time so far in this iteration.
             elapsed = time() - process_start_time;
+            push!(comp_time_list, elapsed);
             prediction_dict_history[end] = get_clipped_prediction_dict(controller.prediction_dict,
                                                                         controller.sim_param.num_samples);
 
@@ -259,5 +249,8 @@ function evaluate(scene_loader::SceneLoader,
                          total_control_cost, total_position_cost, total_collision_cost, total_collision, log);
     end
 
+    println("Average computation time: ", mean(comp_time_list))
+    println("std of computation time: ", std(comp_time_list))
+    println("List of computation time: ", comp_time_list)
     return eval_result, controller, ado_positions
 end

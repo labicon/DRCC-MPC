@@ -83,7 +83,7 @@ function evaluate(scene_loader::SceneLoader,
                   ado_inputs_init::Union{Nothing, Dict{T, Vector{Float64}} where T <: Union{PyObject, String}}=nothing, # only needed for CrowdNavController
                   nominal_control::Union{Nothing, Bool}=nothing, # determines if nominal control is used in RSSAC controller
                   ado_id_removed::Union{Nothing, String}=nothing, # determines if ado_id_removed is removed from scenes with TrajectronSceneLoader
-                  predictor::Union{Nothing, GaussianPredictor, StopGaussianPredictor}=nothing) # needs to feed in GaussianPredictor if BICController is used with SyntheticSceneLoader
+                  predictor::Union{Nothing, GaussianPredictor}=nothing) # needs to feed in GaussianPredictor if BICController is used with SyntheticSceneLoader
     # Assertions
     if typeof(controller) == BICController
         @assert isnothing(nominal_control)
@@ -149,6 +149,9 @@ function evaluate(scene_loader::SceneLoader,
     sim_end_time = measurement_schedule[end];
     prediction_horizon = controller.sim_param.dto*
                          controller.sim_param.prediction_steps;
+
+    # computation time list
+    comp_time_list = [];
     while w_history[end].t <= sim_end_time
         current_time = w_history[end].t;
         if current_time == measurement_schedule[m_time_idx]
@@ -168,21 +171,9 @@ function evaluate(scene_loader::SceneLoader,
                     delete!(ado_positions, key_to_remove)
                     delete!(ado_inputs, key_to_remove)
                 end
-            elseif typeof(scene_loader) == SyntheticSceneLoader || typeof(scene_loader) == ShiftedSyntheticSceneLoader ||
-                        typeof(scene_loader) == StopSyntheticSceneLoader
-                if typeof(scene_loader) == StopSyntheticSceneLoader && m_time_idx == 10
-                    # controller.predictor.stop = true;
-                    scene_loader.stop = true;
-                    @warn "Pedestrian stopped"
-                end
-                if typeof(controller) == RSSACController
-                    ado_positions = fetch_ado_positions!(scene_loader, controller.prediction_dict);
-                else
-                    prediction_dict = sample_future_ado_positions!(predictor,
-                                                                   w_history[end].ap_dict);
-                    ado_positions = fetch_ado_positions!(scene_loader, prediction_dict);
-                end
             end
+            # Starting timer to keep track of computation time
+            process_start_time = time();
             if current_time < sim_end_time
                 if typeof(controller) == RSSACController
                     # Schedule prediction
@@ -202,13 +193,11 @@ function evaluate(scene_loader::SceneLoader,
                                                                                controller.sim_param.num_samples,
                                                                                controller.sim_result.u_nominal_idx);
                 end
-                wait(controller.prediction_task);
+                # wait(controller.prediction_task);
             end
             w_history[end].ap_dict = convert_nodes_to_str(ado_positions);
             w_history[end].t_last_m = current_time;
             m_time_idx += 1;
-            # Starting timer to keep track of computation time
-            process_start_time = time();
         else
             # No new measurement
             # Starting timer to keep track of computation time
@@ -240,6 +229,10 @@ function evaluate(scene_loader::SceneLoader,
                 end
                 last_control_update_time = w_history[end].t
                 wait(controller.control_update_task)
+                # Stop timer and measure computation time so far in this iteration.
+                elapsed = time() - process_start_time;
+                push!(comp_time_list, elapsed);
+                println("Computation time list: ", comp_time_list)
             end
             # Get control for current_time
             if typeof(controller) == RSSACController
@@ -253,7 +246,6 @@ function evaluate(scene_loader::SceneLoader,
 
             # Stop timer and measure computation time so far in this iteration.
             elapsed = time() - process_start_time;
-
             # Accumulate cost
             total_position_cost +=
                 instant_evaluation_position_cost(w_history[end].e_state, ego_pos_goal_vec,
@@ -359,6 +351,9 @@ function evaluate(scene_loader::SceneLoader,
                                  w_history, u_history,
                                  total_control_cost, total_position_cost, total_collision_cost, log);
     end
+
+    println("Average computation time: ", mean(comp_time_list))
+    println("std of computation time: ", std(comp_time_list))
     if (typeof(controller) == RSSACController &&
        typeof(controller.predictor) == TrajectronPredictor) ||
        (typeof(controller) == CrowdNavController)

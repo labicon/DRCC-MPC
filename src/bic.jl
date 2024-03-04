@@ -96,12 +96,15 @@ function compute_buffered_voronoi_cells(w_init::WorldState,
                          scale_and_shift(p[2], scale_factor=1. /(ymax - ymin),
                                                subtract=ymin, offset=1.)]
                          for p in input_positions]
-    generators = [IndexablePoint2D(p[1], p[2], ii) for (ii, p) in
-                  enumerate(scaled_positions)];
+
+    generators = [IndexablePoint2D(p[1], p[2], ii) for (ii, p) in enumerate(scaled_positions)];
 
     # compute voronoi cells (vertices)
-    scaled_voronoi_cells = voronoicells(generators)
-
+    # scaled_voronoi_cells = voronoicells(generators)
+    rect = Rectangle(Point2D(1., 1.), Point2D(2., 2.))
+    points = [Point2D(p[1], p[2]) for p in scaled_positions]
+    scaled_voronoi_cells = voronoicells(points, rect)
+    # println("scaled_voronoi_cells: ", scaled_voronoi_cells)
     # unshift and unscale
     vertices_vec = Vector{Vector{Vector{Float64}}}(undef, length(generators));
     for ii = 1:length(generators)
@@ -110,7 +113,7 @@ function compute_buffered_voronoi_cells(w_init::WorldState,
                              scale_and_shift(gety(p), scale_factor=(ymax - ymin),
                                                       subtract=1., offset=ymin)]
                              for p in sort_vertices(generators[ii],
-                                                    scaled_voronoi_cells[ii])];
+                                                    scaled_voronoi_cells.Cells[ii])];
     end
 
     # compute buffered voronoi cells (polygons)
@@ -169,7 +172,7 @@ function project(point::Vector{Float64}, bic::Polygon2D)
     for c in hpoly.constraints
         problem.constraints += dot(c.a, x) <= c.b
     end
-    solve!(problem, () -> SCS.Optimizer(verbose=false))
+    solve!(problem, () -> SCS.Optimizer()) #verbose=false
     return Float64[x.value[1], x.value[2]]
 end
 

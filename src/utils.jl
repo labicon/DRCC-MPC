@@ -442,61 +442,6 @@ function controller_setup(# Scene Loader parameters
 end
 
 function controller_setup(# Scene Loader parameters
-                            scene_param::StopSyntheticSceneParameter,
-                            # Predictor Parameters
-                            predictor_param::StopGaussianPredictorParameter;
-                            prediction_device::String,
-                            # Cost Parameters
-                            cost_param::CostParameter,
-                            # Control Parameters
-                            cnt_param::ControlParameter,
-                            # Simulation Parameters
-                            dtc::Float64,
-                            dto::Float64,
-                            ado_pos_init_dict::Dict{String, Vector{Float64}},
-                            ado_vel_dict::Dict{String, Vector{DiagNormal}},
-                            # Ego Initial Conditions
-                            ego_pos_init_vec::Vector{Float64},
-                            ego_vel_init_vec::Union{Nothing, Vector{Float64}}=nothing,
-                            ego_pos_goal_vec::Vector{Float64},
-                            t_init::Time=Time(0.0),
-                            # Other Parameters
-                            target_speed::Float64,
-                            sim_horizon::Float64,
-                            verbose=true)
-    if verbose
-        println("Scene Mode: synthetic")
-        println("Prediction Mode: gaussian")
-        println("Deterministic Prediction: $(predictor_param.deterministic)")
-    end
-    if prediction_device == "cuda"
-        @warn "Prediction on CUDA devices is not currently supported. Using CPU."
-    end
-    device = py"torch".device("cpu");
-
-    scene_loader = StopSyntheticSceneLoader(scene_param, deepcopy(ado_pos_init_dict), false);
-    predictor = StopGaussianPredictor(predictor_param, dto, ado_vel_dict);
-    sim_param = SimulationParameter(predictor, dtc, cost_param);
-
-    w_init, measurement_schedule, target_trajectory =
-        init_condition_setup(ego_pos_init_vec=ego_pos_init_vec,
-            ego_vel_init_vec=ego_vel_init_vec,
-            ego_pos_goal_vec=ego_pos_goal_vec,
-            t_init=t_init,
-            ado_positions=ado_pos_init_dict,
-            target_speed=target_speed,
-            sim_horizon=sim_horizon,
-            sim_param=sim_param);
-    # Controller setup
-    u_schedule = convert_to_schedule(w_init.t, cnt_param.u_nominal_base, sim_param);
-    controller = RSSACController(predictor, u_schedule, sim_param, cnt_param);
-    schedule_prediction!(controller, ado_pos_init_dict);
-    wait(controller.prediction_task);
-
-    return scene_loader, controller, w_init, measurement_schedule, target_trajectory, target_speed
-end
-
-function controller_setup(# Scene Loader parameters
                           scene_param::TrajectronSceneParameter;
                           # Cost Parameters
                           cost_param::CostParameter,
@@ -619,6 +564,8 @@ function controller_setup(# Scene Loader parameters
     num_samples = 0;
     sim_param = SimulationParameter(dtc, scene_loader.dto, prediction_steps,
                                     num_samples, cost_param)
+    # sim_param = SimulationParameter(dtc, 0.25, prediction_steps,
+    #                                 num_samples, cost_param)
     ado_inputs = fetch_ado_positions!(scene_loader, return_full_state=true);
     ado_positions = reduce_to_positions(ado_inputs)
 
