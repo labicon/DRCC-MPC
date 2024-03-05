@@ -54,7 +54,7 @@ function evaluate(scene_loader::SceneLoader,
                   # ado_inputs_init::Union{Nothing, Dict{T, Vector{Float64}} where T <: Union{PyObject, String}}=nothing, # only needed for CrowdNavController
                   # nominal_control::Union{Nothing, Bool}=nothing, # determines if nominal control is used in RSSAC controller
                   ado_id_removed::Union{Nothing, String}=nothing, # determines if ado_id_removed is removed from scenes with TrajectronSceneLoader
-                  predictor::Union{Nothing, GaussianPredictor, StopGaussianPredictor}=nothing) # needs to feed in GaussianPredictor if BICController is used with SyntheticSceneLoader
+                  predictor::Union{Nothing, GaussianPredictor}=nothing) # needs to feed in GaussianPredictor if BICController is used with SyntheticSceneLoader
     # Assertions
     if typeof(scene_loader) != TrajectronSceneLoader
         @assert isnothing(ado_id_removed)
