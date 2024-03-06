@@ -1,8 +1,8 @@
 env_trajectron++/**
 notebook/.ipynb_checkpoints/**
+data
 .ipynb_checkpoints/**
 .idea/**
 simulation_data/**
-*.gif
 *.csv
 .jld2
